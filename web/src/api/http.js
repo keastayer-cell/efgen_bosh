@@ -1,4 +1,8 @@
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8081'
+
+function accessToken() {
+  return typeof localStorage === 'undefined' ? null : localStorage.getItem('efgen_access_token')
+}
 
 export async function requestJson(path, options = {}) {
   let response
@@ -9,6 +13,9 @@ export async function requestJson(path, options = {}) {
       credentials: options.credentials || 'include',
       headers: {
         'Content-Type': 'application/json',
+        ...(accessToken()
+          ? { Authorization: `Bearer ${accessToken()}` }
+          : {}),
         ...(options.headers || {}),
       },
     })
@@ -18,7 +25,7 @@ export async function requestJson(path, options = {}) {
 
   const body = await response.json().catch(() => ({}))
   if (!response.ok) {
-    const error = new Error(body.error || 'Не удалось выполнить запрос.')
+    const error = new Error(body.message || body.error || 'Не удалось выполнить запрос.')
     error.status = response.status
     error.body = body
     throw error
