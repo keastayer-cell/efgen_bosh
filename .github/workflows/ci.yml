@@ -89,6 +89,9 @@ jobs:
           DB_SCHEMA: work
           DB_USER: efgen_bosh
           DB_PASSWORD: efgen_bosh_ci_password
+          JWT_SECRET: ci-only-secret-0123456789abcdef0123456789
+          JWT_EXPIRES_MINUTES: 30
+          JWT_REFRESH_EXPIRES_DAYS: 30
         run: bash scripts/verify-migrations-postgres.sh
 
   operations:
