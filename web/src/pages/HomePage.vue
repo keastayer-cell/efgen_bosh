@@ -484,6 +484,20 @@ async function saveCar() {
   }
 }
 
+async function updateCarInline(car, field, value) {
+  try {
+    const payload = {
+      vehicleName: car.vehicleName || car.vehicle || '', vehicleNameLatin: car.vehicleNameLatin || '', registrationNumber: car.registrationNumber || '', vin: car.vin || '',
+      insuredPerson: car.insuredPerson || '', claimNumber: car.claimNumber || '', acceptedAt: car.acceptedAt || null, startedAt: car.startedAt || null,
+      appointmentDate: car.appointmentDate || null, comment: car.comment === '—' ? '' : car.comment || '', documentFolderUrl: car.documentFolderUrl || '', insurerId: car.insurerId || null, shiftId: car.shiftId || null, contractorId: car.contractorId || null,
+    }
+    if (field === 'shiftId') payload.shiftId = value ? Number(value) : null; else payload[field] = value || null
+    await requestJson(`/api/v1/cars/${car.id}`, { method: 'PUT', body: JSON.stringify(payload) })
+    await loadCars()
+    showToast('Изменение сохранено')
+  } catch (error) { showToast(error.message) }
+}
+
 async function deleteCar() {
   if (!editingCar.value || !window.confirm(`Удалить автомобиль №${editingCar.value.accountingNumber} вместе с запчастями и документами?`)) return
   try {
@@ -691,12 +705,12 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
           <article v-for="car in visibleCars" :key="car.number" class="car-row" :class="[`is-${car.status}`, { 'is-open': expandedCars.has(car.id) }]">
             <div class="car-summary">
               <div class="cell car-identity"><div class="car-title"><button class="row-chevron" type="button" :aria-expanded="expandedCars.has(car.id)" @click="toggleCarDetails(car)">{{ expandedCars.has(car.id) ? '⌄' : '›' }}</button><b class="car-sequence">{{ car.number }}</b><button class="row-toggle" @click="openCarEdit(car)"><strong>{{ car.vehicle }}</strong><small>{{ car.registration }} · VIN {{ car.vin }}</small><small>{{ car.status === 'delivered' ? 'Выдан' : car.status === 'ready' ? 'Всё поступило' : car.status === 'waiting' ? 'Ожидаются детали' : 'В работе' }}</small></button></div></div>
-              <div class="cell"><strong>{{ car.insurer }}</strong><small>Начало: {{ car.start }}</small></div>
+              <div class="cell"><span class="insurance-pill">{{ car.insurer }}</span><small>Начало: {{ car.start }}</small></div>
               <div class="cell parts-glance"><span class="progress-ring" :style="{ '--progress': `${car.parts.length ? Math.round((car.parts.filter((part) => part.received).length / car.parts.length) * 100) : 0}%` }" :data-label="`${car.parts.filter((part) => part.received).length}/${car.parts.length}`"></span><span><strong>{{ car.parts.length ? `${car.parts.filter((part) => part.received).length} из ${car.parts.length} поступили` : 'Нет деталей' }}</strong><small>{{ car.parts.some((part) => !part.received && part.expectedDate && part.expectedDate < new Date().toISOString().slice(0, 10)) ? 'Есть просроченные детали' : 'Поступление по графику' }}</small></span></div>
-              <div class="cell muted-cell">{{ car.comment }}</div>
+              <div class="cell"><input class="comment-input" type="text" :value="car.comment === '—' ? '' : car.comment" placeholder="Комментарий..." @change="updateCarInline(car, 'comment', $event.target.value)" /></div>
               <div class="cell"><a v-if="car.documentFolderUrl" class="link-button" :href="car.documentFolderUrl" target="_blank" rel="noreferrer">Открыть папку</a><button v-else class="link-button" @click="openStub('Документы')">Папка не указана</button></div>
-              <div class="cell muted-cell">{{ car.record }}</div><div class="cell">{{ car.shift }}</div>
-              <div class="cell"><button v-if="car.status !== 'delivered'" class="link-button" @click="toggleDelivered(car)">Выдать</button><button v-else class="link-button" @click="toggleDelivered(car)">Отменить</button></div>
+              <div class="cell"><input class="appointment-input" type="date" :value="car.appointmentDate || ''" @change="updateCarInline(car, 'appointmentDate', $event.target.value)" /></div><div class="cell"><select class="shift-select" :value="car.shiftId || ''" @change="updateCarInline(car, 'shiftId', $event.target.value)"><option value="">Не назначена</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></div>
+              <div class="cell"><label class="delivered-check"><input type="checkbox" :checked="car.status === 'delivered'" @change="toggleDelivered(car)" /><span>Выдан</span></label><small v-if="car.deliveredAt">{{ car.deliveredAt }}</small></div>
             </div>
             <div v-if="expandedCars.has(car.id)" class="car-details"><div class="details-panel"><div v-if="car.parts.length" class="details-head"><span>Поступление</span><span>Деталь</span><span>Артикул</span><span>Поставщик</span><span>Дата поступления</span><span></span></div><div v-for="part in car.parts" :key="part.id" class="part-row" :class="{ 'is-received': part.received }"><label class="received-control"><input type="checkbox" :checked="part.received" @change="togglePartReceived(car, part)" /><span>{{ part.received ? 'Поступила' : 'Ожидается' }}</span></label><div><div class="part-name">{{ part.name }}</div><small v-if="part.receivedAt">Фактически: {{ part.receivedAt }}</small></div><span class="article">{{ part.article || '—' }}</span><select :value="part.supplierId || ''" @change="updatePartSupplier(car, part, $event.target.value)"><option value="">Не указан</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select><input class="part-date-input" type="date" :value="part.expectedDate || ''" @change="updatePartExpectedDate(car, part, $event.target.value)" /><button class="part-delete" type="button" title="Удалить деталь" @click="deletePart(car, part)">×</button></div><div class="details-actions"><button class="link-button" type="button" @click="openPartForm(car)">＋ Добавить деталь</button><button class="link-button" type="button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" type="button" @click="openWorkOrder(car)">ЗН+Счёт</button><button class="link-button" type="button" @click="toggleAccepted(car)">{{ car.acceptedAt ? 'Отменить приёмку' : 'Принять автомобиль' }}</button></div></div></div>
           </article>
@@ -804,6 +818,12 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 .extended-filters select { height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--soft); font-size: 11px; }
 .overdue-filter { display: flex; gap: 5px; align-items: center; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .row-chevron { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; color: var(--muted); background: var(--soft); font-size: 20px; line-height: 1; }
+.insurance-pill { display: inline-block; padding: 7px 11px; border-radius: 999px; color: #3e4a47; background: #edf1f0; font-size: 11px; font-weight: 750; }
+.comment-input, .appointment-input, .shift-select { width: 100%; min-height: 34px; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; outline: 0; color: inherit; background: transparent; font-size: 11px; }
+.comment-input:hover, .appointment-input:hover, .shift-select:hover { border-color: var(--line); background: white; }
+.comment-input:focus, .appointment-input:focus, .shift-select:focus { border-color: var(--accent); background: white; box-shadow: 0 0 0 3px rgb(28 201 178 / 10%); }
+.delivered-check { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: white; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.delivered-check input { width: 18px; height: 18px; accent-color: var(--green); }
 .parts-glance { display: flex; align-items: center; gap: 10px; }
 .progress-ring { width: 48px; height: 48px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--green) var(--progress), #dce8e3 0); position: relative; }
 .progress-ring::after { content: ''; position: absolute; width: 36px; height: 36px; border-radius: 50%; background: white; }
