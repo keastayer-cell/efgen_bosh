@@ -7,6 +7,14 @@ ALTER TABLE public.app_user SET SCHEMA work;
 ALTER TABLE work.app_user RENAME TO w_user_login;
 ALTER TABLE work.w_user_login RENAME COLUMN display_name TO name;
 ALTER TABLE work.w_user_login RENAME COLUMN password_change_required TO must_change_password;
+ALTER TABLE work.w_user_login
+  ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE work.w_user_login
+  ADD COLUMN password_changed_at TIMESTAMPTZ;
+
+UPDATE work.w_user_login
+SET password_changed_at = COALESCE(password_changed_at, created_at)
+WHERE password_changed_at IS NULL;
 
 ALTER INDEX work.app_user_email_lower_unique
   RENAME TO idx_w_user_login_email_lower;
@@ -71,6 +79,7 @@ COMMENT ON COLUMN work.w_user_login.name IS 'Имя пользователя';
 COMMENT ON COLUMN work.w_user_login.password_hash IS 'Хэш пароля';
 COMMENT ON COLUMN work.w_user_login.must_change_password IS 'Признак обязательной смены пароля';
 COMMENT ON COLUMN work.w_user_login.token_version IS 'Версия токена для принудительного завершения сессий';
+COMMENT ON COLUMN work.w_user_login.password_changed_at IS 'Дата последней смены пароля';
 COMMENT ON COLUMN work.w_user_login.created_at IS 'Дата и время создания пользователя';
 
 COMMENT ON TABLE work.w_role IS 'Справочник ролей доступа';
