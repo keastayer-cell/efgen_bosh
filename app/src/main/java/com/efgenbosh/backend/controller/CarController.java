@@ -31,6 +31,9 @@ public class CarController {
     @GetMapping
     public List<CarResponse> findAll() { return service.findAll(); }
 
+    @GetMapping("/search")
+    public List<CarResponse> search(@RequestParam(required = false) String q) { return service.search(q); }
+
     @GetMapping("/{id}")
     public CarResponse findById(@PathVariable Long id) { return service.findById(id); }
 

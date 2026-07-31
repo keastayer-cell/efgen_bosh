@@ -29,6 +29,9 @@ const carFormVisible = ref(false)
 const partFormVisible = ref(false)
 const workOrderVisible = ref(false)
 const directoriesVisible = ref(false)
+const contractorVisible = ref(false)
+const editingContractor = ref(null)
+const contractorForm = ref({ code: '', shortName: '', fullName: '', signerName: '', inn: '', ogrnip: '', address: '', bankName: '', bankInn: '', bankKpp: '', bik: '', correspondentAccount: '', settlementAccount: '' })
 const editingCar = ref(null)
 const editingPart = ref(null)
 const selectedCar = ref(null)
@@ -132,6 +135,21 @@ function applyVehicleAlias(id) {
 }
 
 function applyContractor(id) { carForm.value.contractorId = id ? Number(id) : null }
+
+function openContractorForm(item = null) {
+  editingContractor.value = item
+  contractorForm.value = { code: item?.code || '', shortName: item?.shortName || '', fullName: item?.fullName || '', signerName: item?.signerName || '', inn: item?.inn || '', ogrnip: item?.ogrnip || '', address: item?.address || '', bankName: item?.bankName || '', bankInn: item?.bankInn || '', bankKpp: item?.bankKpp || '', bik: item?.bik || '', correspondentAccount: item?.correspondentAccount || '', settlementAccount: item?.settlementAccount || '' }
+  contractorVisible.value = true
+}
+
+async function saveContractor() {
+  try { await requestJson(editingContractor.value ? `/api/v1/contractors/${editingContractor.value.id}` : '/api/v1/contractors', { method: editingContractor.value ? 'PUT' : 'POST', body: JSON.stringify(contractorForm.value) }); await loadDirectories(); contractorVisible.value = false; showToast('Исполнитель сохранён') } catch (error) { showToast(error.message) }
+}
+
+async function deleteContractor(item) {
+  if (!window.confirm(`Удалить исполнителя «${item.shortName}»?`)) return
+  try { await requestJson(`/api/v1/contractors/${item.id}`, { method: 'DELETE' }); await loadDirectories(); showToast('Исполнитель удалён') } catch (error) { showToast(error.message) }
+}
 
 function printCarDocument(type) {
   const target = document.querySelector('.data-modal')
@@ -266,6 +284,16 @@ async function saveDefect() {
   finally { defectBusy.value = false }
 }
 
+async function transferDefectRecommendations() {
+  const source = mappedCars.value.find((item) => item.id === selectedDefectCar.value?.id) || selectedDefectCar.value
+  if (!source) return
+  await openWorkOrder(source)
+  const names = String(defect.value.recommendations || '').split(/[,;\n]+/).map((value) => value.trim()).filter(Boolean)
+  if (workOrder.value && names.length) workOrder.value.lines.push(...names.map((name, index) => ({ catalogId: '', categoryName: 'Дефектовка', name, unit: 'шт.', quantity: 1, price: 0, sortOrder: index })))
+  defectVisible.value = false
+  showToast('Рекомендации перенесены в заказ-наряд')
+}
+
 function emptyWorkOrderLine() {
   return { catalogId: '', categoryName: '', name: '', unit: 'шт.', quantity: 1, price: 0, sortOrder: 0 }
 }
@@ -364,6 +392,9 @@ function printWorkOrder() {
 
 function printDocument(type) {
   workOrderDocumentType.value = type
+  if (workOrder.value?.id) {
+    requestJson(`/api/v1/work-orders/${workOrder.value.id}/documents/${type}?number=${encodeURIComponent(type === 'invoice' ? workOrder.value.invoiceNumber || '' : type === 'act' ? workOrder.value.actNumber || '' : workOrder.value.orderNumber || '')}`, { method: 'POST' }).catch((error) => showToast(`Документ не зарегистрирован: ${error.message}`))
+  }
   documentTitle()
   const heading = document.querySelector('.print-target h2')
   const originalHeading = heading?.textContent
@@ -612,6 +643,8 @@ onMounted(() => {
 
     <footer class="global-footer"><span>Efgen Bosh · рабочий интерфейс</span><span>Данные разделов подключаются поэтапно</span></footer>
     <button type="button" class="standalone-order-button button button-primary" @click="openStandaloneWorkOrder">＋ Новый заказ-наряд</button>
+    <button v-if="directoriesVisible" type="button" class="contractors-button button button-cloud" @click="openContractorForm()">Исполнители</button>
+    <button v-if="defectVisible && defect.recommendations" type="button" class="defect-transfer-button button button-primary" @click="transferDefectRecommendations">Перенести рекомендации в заказ-наряд</button>
 
     <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button" @click="printCarDocument('acceptance')">Акт приёма</button><button type="button" class="link-button" @click="printCarDocument('delivery')">Акт выдачи</button><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
     <div v-if="carFormVisible && vehicleAliases.length" class="vehicle-alias-toolbar"><span>Модель из справочника:</span><select @change="applyVehicleAlias($event.target.value)"><option value="">Выбрать модель</option><option v-for="item in vehicleAliases" :key="item.id" :value="item.id">{{ item.sourceName }}<template v-if="item.normalizedLatinName"> · {{ item.normalizedLatinName }}</template></option></select></div>
@@ -620,6 +653,7 @@ onMounted(() => {
     <div v-if="workOrderVisible && workOrder" class="document-toolbar"><span>Номера документов:</span><input v-model="workOrder.orderNumber" placeholder="Заказ-наряд №" /><input v-model="workOrder.invoiceNumber" placeholder="Счёт №" /><input v-model="workOrder.actNumber" placeholder="Акт №" /><span>Печать:</span><button type="button" class="link-button" @click="printDocument('order')">Заказ-наряд</button><button type="button" class="link-button" @click="printDocument('invoice')">Счёт</button><button type="button" class="link-button" @click="printDocument('act')">Акт</button></div>
 
     <div v-if="defectVisible" class="stub-overlay" @click.self="defectVisible = false"><section class="data-modal defect-modal"><button class="icon-button" aria-label="Закрыть" @click="defectVisible = false">×</button><p class="eyebrow">Осмотр автомобиля</p><h2>Дефектовка</h2><p class="modal-subtitle">{{ selectedDefectCar?.number }} · {{ selectedDefectCar?.vehicle }} · {{ selectedDefectCar?.registration }}</p><div v-if="defectBusy" class="empty-state">Загружаем дефектовку…</div><div v-else-if="defectError" class="empty-state">{{ defectError }}</div><form v-else class="data-form-grid" @submit.prevent="saveDefect"><label><span>Статус</span><select v-model="defect.status"><option value="DRAFT">Черновик</option><option value="CONFIRMED">Подтверждено</option></select></label><label class="form-wide"><span>Повреждения и замечания</span><textarea v-model="defect.findings" rows="5" placeholder="Передний бампер, левая дверь…"></textarea></label><label class="form-wide"><span>Рекомендованные работы и запчасти</span><textarea v-model="defect.recommendations" rows="5" placeholder="Замена бампера, окраска двери…"></textarea></label><label class="form-wide"><span>Фотографии осмотра (до 8)</span><input type="file" accept="image/*" multiple @change="readDefectPhotos" /></label><div v-if="defect.photos.length" class="defect-photo-grid form-wide"><img v-for="(photo, index) in defect.photos" :key="`${photo.slice(0, 24)}-${index}`" :src="photo" alt="Фото повреждения" /></div><div class="modal-actions form-wide"><button type="button" class="button button-cloud dark-button" @click="defectVisible = false">Отмена</button><button class="button button-primary" type="submit">Сохранить дефектовку</button></div></form></section></div>
+    <div v-if="contractorVisible" class="stub-overlay" @click.self="contractorVisible = false"><form class="data-modal contractor-modal" @submit.prevent="saveContractor"><button type="button" class="icon-button" aria-label="Закрыть" @click="contractorVisible = false">×</button><p class="eyebrow">Реквизиты</p><h2>{{ editingContractor ? 'Изменить исполнителя' : 'Новый исполнитель' }}</h2><div class="data-form-grid"><label><span>Код</span><input v-model="contractorForm.code" required /></label><label><span>Краткое название</span><input v-model="contractorForm.shortName" required /></label><label class="form-wide"><span>Полное название</span><input v-model="contractorForm.fullName" required /></label><label><span>Подписант</span><input v-model="contractorForm.signerName" /></label><label><span>ИНН</span><input v-model="contractorForm.inn" /></label><label><span>ОГРНИП</span><input v-model="contractorForm.ogrnip" /></label><label class="form-wide"><span>Адрес</span><input v-model="contractorForm.address" /></label><label class="form-wide"><span>Банк</span><input v-model="contractorForm.bankName" /></label><label><span>БИК</span><input v-model="contractorForm.bik" /></label><label><span>Расчётный счёт</span><input v-model="contractorForm.settlementAccount" /></label></div><div class="contractor-list"><div v-for="item in contractors" :key="item.id" class="directory-item"><span>{{ item.shortName }}<small>{{ item.code }} · {{ item.inn || 'ИНН не указан' }}</small></span><button type="button" class="link-button" @click="openContractorForm(item)">Изменить</button><button type="button" class="link-button danger-link" @click="deleteContractor(item)">Удалить</button></div></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="contractorVisible = false">Закрыть</button><button class="button button-primary" type="submit">Сохранить</button></div></form></div>
 
     <div v-if="carFormVisible" class="stub-overlay" @click.self="carFormVisible = false"><form class="data-modal" @submit.prevent="saveCar"><button type="button" class="icon-button" aria-label="Закрыть" @click="carFormVisible = false">×</button><p class="eyebrow">Карточка автомобиля</p><h2>{{ editingCar ? `Автомобиль №${editingCar.accountingNumber}` : 'Новый автомобиль' }}</h2><div class="data-form-grid"><label><span>Госномер</span><input v-model="carForm.registrationNumber" required placeholder="А123ВС124" /></label><label><span>Автомобиль</span><input v-model="carForm.vehicleName" required placeholder="Джили Окаванго" /></label><label class="form-wide"><span>Марка / модель латиницей</span><input v-model="carForm.vehicleNameLatin" placeholder="HYUNDAI CRETA" /></label><label><span>VIN</span><input v-model="carForm.vin" placeholder="VIN автомобиля" /></label><label><span>Страхователь</span><input v-model="carForm.insuredPerson" placeholder="ФИО или организация" /></label><label><span>Страховая</span><select v-model="carForm.insurerId"><option value="">Не выбрана</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Номер дела</span><input v-model="carForm.claimNumber" placeholder="108148/26" /></label><label><span>Смена</span><select v-model="carForm.shiftId"><option value="">Не выбрана</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Дата начала</span><input v-model="carForm.startedAt" type="date" /></label><label><span>Дата приёмки</span><input v-model="carForm.acceptedAt" type="date" /></label><label><span>Дата записи</span><input v-model="carForm.appointmentDate" type="date" /></label><label class="form-wide"><span>Папка документов</span><input v-model="carForm.documentFolderUrl" type="url" placeholder="https://..." /></label><label class="form-wide"><span>Комментарий</span><textarea v-model="carForm.comment" rows="3"></textarea></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="carFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingCar ? 'Сохранить изменения' : 'Сохранить автомобиль' }}</button></div></form></div>
 
@@ -674,6 +708,9 @@ onMounted(() => {
 .contractor-toolbar { position: fixed; left: 24px; bottom: 76px; z-index: 20; display: flex; gap: 10px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 12px; }
 .contractor-toolbar select { height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); }
 .standalone-order-button { position: fixed; right: 24px; top: 88px; z-index: 10; }
+.contractors-button { position: fixed; right: 190px; top: 88px; z-index: 10; }
+.contractor-modal { width: min(900px, 100%); }
+.defect-transfer-button { position: fixed; right: 24px; bottom: 76px; z-index: 21; }
 .directory-modal { width: min(760px, 100%); }
 .directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }
 .directory-tabs button { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }

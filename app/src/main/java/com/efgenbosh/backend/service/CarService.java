@@ -39,6 +39,17 @@ public class CarService {
     }
 
     @Transactional
+    public List<CarResponse> search(String query) {
+        String needle = query == null ? "" : query.trim().toLowerCase();
+        return cars.findAllWithParts().stream().filter(car -> needle.isBlank()
+            || String.valueOf(car.getAccountingNumber()).contains(needle)
+            || value(car.getVehicleName()).toLowerCase().contains(needle)
+            || value(car.getRegistrationNumber()).toLowerCase().contains(needle)
+            || value(car.getVin()).toLowerCase().contains(needle)
+            || value(car.getClaimNumber()).toLowerCase().contains(needle)).map(this::response).toList();
+    }
+
+    @Transactional
     public CarResponse findById(Long id) {
         return response(car(id));
     }
