@@ -53,6 +53,8 @@ public class CarService {
             || value(car.getVehicleModel()).toLowerCase().contains(needle)
             || value(car.getRegistrationNumber()).toLowerCase().contains(needle)
             || value(car.getVin()).toLowerCase().contains(needle)
+            || value(car.getOwnerPhone()).toLowerCase().contains(needle)
+            || value(car.getOwnerName()).toLowerCase().contains(needle)
             || value(car.getClaimNumber()).toLowerCase().contains(needle)).map(this::response).toList();
     }
 

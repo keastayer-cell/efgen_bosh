@@ -11,7 +11,7 @@ const login = ref({ email: '', password: '' })
 const authMode = ref('login')
 const authError = ref('')
 const authBusy = ref(false)
-const activeFilter = ref('active')
+const activeFilter = ref('all')
 const insurerFilter = ref('')
 const shiftFilter = ref('')
 const contractorFilter = ref('')
@@ -100,20 +100,21 @@ const mappedCars = computed(() => cars.value.map((car) => ({
   ...car,
   number: car.accountingNumber,
   registration: car.registrationNumber || 'Госномер не указан',
-  vehicle: car.vehicleName,
+  vehicle: [car.vehicleMake, car.vehicleModel].filter(Boolean).join(' ') || car.vehicleName,
   insurer: insurers.value.find((item) => item.id === car.insurerId)?.name || (car.insurerId ? `Страховая #${car.insurerId}` : 'Страховая не выбрана'),
   start: car.createdAt ? car.createdAt.slice(0, 10) : '—',
   parts: car.parts,
   partsSummary: car.parts.length ? `${car.parts.filter((part) => part.received).length} / ${car.parts.length}` : '—',
   comment: car.comment || '—',
+  ownerPhone: car.ownerPhone || '',
   record: car.createdAt ? car.createdAt.slice(0, 10) : '—',
   shift: shifts.value.find((item) => item.id === car.shiftId)?.name || (car.shiftId ? `Смена #${car.shiftId}` : '—'),
   status: car.status.toLowerCase(),
 })))
 
 const visibleCars = computed(() => mappedCars.value.filter((car) => {
-  const matchesFilter = activeFilter.value === 'active'
-    ? car.status !== 'delivered'
+  const matchesFilter = activeFilter.value === 'all'
+    ? true
     : activeFilter.value === car.status
   const matchesInsurer = !insurerFilter.value || String(car.insurerId || '') === insurerFilter.value
   const matchesShift = !shiftFilter.value || String(car.shiftId || '') === shiftFilter.value
@@ -593,7 +594,8 @@ async function saveCar() {
     })
     carFormVisible.value = false
     await loadCars()
-    showToast(editingCar.value ? 'Автомобиль сохранён' : 'Автомобиль добавлен')
+    activeFilter.value = 'all'
+    showToast(editingCar.value ? 'Автомобиль сохранён' : 'Автомобиль добавлен. Теперь выберите его в реестре и создайте страховой случай.')
     editingCar.value = null
   } catch (error) {
     showToast(error.message)
@@ -801,9 +803,9 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 
       <section class="workspace">
         <div class="toolbar">
-          <label class="search-field"><span>⌕</span><input v-model="search" type="search" placeholder="Поиск по автомобилю, номеру, детали или артикулу" /></label>
+          <label class="search-field"><span>⌕</span><input v-model="search" type="search" placeholder="Поиск по марке, госномеру, VIN или телефону владельца" /></label>
           <div class="filters" role="group" aria-label="Фильтр автомобилей">
-            <button v-for="filter in [['active','В работе'], ['waiting','Ждём детали'], ['ready','Всё поступило'], ['delivered','Выданы']]" :key="filter[0]" class="filter" :class="{ 'is-active': activeFilter === filter[0] }" @click="activeFilter = filter[0]">{{ filter[1] }}</button>
+            <button v-for="filter in [['all','Все автомобили'], ['active','В работе'], ['waiting','Ждём детали'], ['ready','Всё поступило'], ['delivered','Выданы']]" :key="filter[0]" class="filter" :class="{ 'is-active': activeFilter === filter[0] }" @click="activeFilter = filter[0]">{{ filter[1] }}</button>
           </div>
           <div class="extended-filters">
             <select v-model="insurerFilter" aria-label="Фильтр по страховой"><option value="">Все страховые</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select>
@@ -822,11 +824,11 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
               <div class="cell"><span class="insurance-pill">{{ car.insurer }}</span><small>Начало: {{ car.start }}</small></div>
               <div class="cell parts-glance"><span class="progress-ring" :style="{ '--progress': `${car.parts.length ? Math.round((car.parts.filter((part) => part.received).length / car.parts.length) * 100) : 0}%` }" :data-label="`${car.parts.filter((part) => part.received).length}/${car.parts.length}`"></span><span><strong>{{ car.parts.length ? `${car.parts.filter((part) => part.received).length} из ${car.parts.length} поступили` : 'Нет деталей' }}</strong><small>{{ car.parts.some((part) => !part.received && part.expectedDate && part.expectedDate < new Date().toISOString().slice(0, 10)) ? 'Есть просроченные детали' : 'Поступление по графику' }}</small></span></div>
               <div class="cell"><input class="comment-input" type="text" :value="car.comment === '—' ? '' : car.comment" placeholder="Комментарий..." @change="updateCarInline(car, 'comment', $event.target.value)" /></div>
-              <div class="cell"><button class="link-button" @click="openCarPhotos(car)">Документы / фото</button><a v-if="car.documentFolderUrl" class="link-button" :href="car.documentFolderUrl" target="_blank" rel="noreferrer">Открыть папку</a></div>
+              <div class="cell"><button class="link-button" type="button" @click="openRepairCases(car)">Страховые случаи</button><a v-if="car.documentFolderUrl" class="link-button" :href="car.documentFolderUrl" target="_blank" rel="noreferrer">Открыть папку</a></div>
               <div class="cell muted-cell">{{ car.record }}</div><div class="cell"><select class="shift-select" :value="car.shiftId || ''" @change="updateCarInline(car, 'shiftId', $event.target.value)"><option value="">Не назначена</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></div>
               <div class="cell"><label class="delivered-check"><input type="checkbox" :checked="car.status === 'delivered'" @change="toggleDelivered(car)" /><span>Выдан</span></label><small v-if="car.deliveredAt">{{ car.deliveredAt }}</small></div>
             </div>
-            <div v-if="expandedCars.has(car.id)" class="car-details"><div class="details-panel"><div v-if="car.parts.length" class="details-head"><span>Поступление</span><span>Деталь</span><span>Артикул</span><span>Поставщик</span><span>Дата поступления</span><span></span></div><div v-for="part in car.parts" :key="part.id" class="part-row" :class="{ 'is-received': part.received }"><label class="received-control"><input type="checkbox" :checked="part.received" @change="togglePartReceived(car, part)" /><span>{{ part.received ? 'Поступила' : 'Ожидается' }}</span></label><div><div class="part-name">{{ part.name }}</div><small v-if="part.receivedAt">Фактически: {{ part.receivedAt }}</small></div><span class="article">{{ part.article || '—' }}</span><select :value="part.supplierId || ''" @change="updatePartSupplier(car, part, $event.target.value)"><option value="">Не указан</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select><input class="part-date-input" type="date" :value="part.expectedDate || ''" @change="updatePartExpectedDate(car, part, $event.target.value)" /><button class="part-delete" type="button" title="Удалить деталь" @click="deletePart(car, part)">×</button></div><div class="details-actions"><button class="link-button" type="button" @click="openPartForm(car)">＋ Добавить деталь</button><button class="link-button" type="button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" type="button" @click="openWorkOrder(car)">ЗН+Счёт</button><button class="link-button" type="button" @click="toggleAccepted(car)">{{ car.acceptedAt ? 'Отменить приёмку' : 'Принять автомобиль' }}</button></div></div></div>
+            <div v-if="expandedCars.has(car.id)" class="car-details"><div class="details-panel"><div v-if="car.parts.length" class="details-head"><span>Поступление</span><span>Деталь</span><span>Артикул</span><span>Поставщик</span><span>Дата поступления</span><span></span></div><div v-for="part in car.parts" :key="part.id" class="part-row" :class="{ 'is-received': part.received }"><label class="received-control"><input type="checkbox" :checked="part.received" @change="togglePartReceived(car, part)" /><span>{{ part.received ? 'Поступила' : 'Ожидается' }}</span></label><div><div class="part-name">{{ part.name }}</div><small v-if="part.receivedAt">Фактически: {{ part.receivedAt }}</small></div><span class="article">{{ part.article || '—' }}</span><select :value="part.supplierId || ''" @change="updatePartSupplier(car, part, $event.target.value)"><option value="">Не указан</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select><input class="part-date-input" type="date" :value="part.expectedDate || ''" @change="updatePartExpectedDate(car, part, $event.target.value)" /><button class="part-delete" type="button" title="Удалить деталь" @click="deletePart(car, part)">×</button></div><div class="details-actions"><button class="link-button" type="button" @click="openRepairCases(car)">＋ Создать / открыть страховой случай</button><button class="link-button" type="button" @click="openPartForm(car)">＋ Добавить деталь</button><button class="link-button" type="button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" type="button" @click="openWorkOrder(car)">ЗН+Счёт</button><button class="link-button" type="button" @click="toggleAccepted(car)">{{ car.acceptedAt ? 'Отменить приёмку' : 'Принять автомобиль' }}</button></div></div></div>
           </article>
           <div v-if="!carsBusy && !carsError && !visibleCars.length" class="empty-state">По выбранному фильтру автомобили не найдены.</div>
         </div>
