@@ -134,6 +134,8 @@ const visibleCars = computed(() => mappedCars.value.filter((car) => {
   return matchesFilter && matchesInsurer && matchesShift && matchesContractor && matchesOverdue && (!query || Object.values(car).some((value) => String(value).toLowerCase().includes(query)))
 }))
 
+const displayedClientCars = computed(() => search.value.trim() ? visibleCars.value : visibleCars.value.slice(carPage.value * carPageSize.value, (carPage.value + 1) * carPageSize.value))
+
 const stats = computed(() => ({
   active: mappedCars.value.filter((car) => car.status !== 'delivered').length,
   waiting: mappedCars.value.filter((car) => car.status === 'waiting').length,
@@ -173,8 +175,9 @@ const visibleRepairCases = computed(() => {
 })
 
 function changeCarPage(page) {
-  carPage.value = Math.max(0, Math.min(page, Math.max(0, carTotalPages.value - 1)))
-  loadCars()
+  const totalPages = search.value.trim() ? carTotalPages.value : Math.ceil(visibleCars.value.length / carPageSize.value)
+  carPage.value = Math.max(0, Math.min(page, Math.max(0, totalPages - 1)))
+  if (search.value.trim()) loadCars()
 }
 
 async function loadDirectories() {
@@ -862,7 +865,7 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
         <div class="toolbar">
           <label class="search-field"><span>⌕</span><input v-model="search" type="search" placeholder="Поиск по марке, госномеру, VIN или телефону владельца" /></label>
           <div class="filters" role="group" aria-label="Фильтр автомобилей">
-            <button v-for="filter in [['all','Все автомобили'], ['active','В работе'], ['waiting','Ждём детали'], ['ready','Всё поступило'], ['delivered','Выданы']]" :key="filter[0]" class="filter" :class="{ 'is-active': activeFilter === filter[0] }" @click="activeFilter = filter[0]">{{ filter[1] }}</button>
+            <button v-for="filter in [['all','Все автомобили'], ['active','В работе'], ['waiting','Ждём детали'], ['ready','Всё поступило'], ['delivered','Выданы']]" :key="filter[0]" class="filter" :class="{ 'is-active': activeFilter === filter[0] }" @click="activeFilter = filter[0]; carPage = 0">{{ filter[1] }}</button>
           </div>
           <div class="extended-filters">
             <select v-model="insurerFilter" aria-label="Фильтр по страховой"><option value="">Все страховые</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select>
@@ -875,7 +878,7 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
         <div class="cars-list" aria-live="polite">
           <div v-if="carsBusy" class="empty-state">Загружаем реестр автомобилей…</div>
           <div v-else-if="carsError" class="empty-state">{{ carsError }} <button class="link-button" @click="loadCars">Повторить</button></div>
-          <article v-for="car in visibleCars" :key="car.number" class="car-row" :class="[`is-${car.status}`, { 'is-open': expandedCars.has(car.id) }]">
+          <article v-for="car in displayedClientCars" :key="car.number" class="car-row" :class="[`is-${car.status}`, { 'is-open': expandedCars.has(car.id) }]">
             <div class="car-summary">
               <div class="cell car-identity"><div class="car-title"><button class="row-chevron" type="button" :aria-expanded="expandedCars.has(car.id)" @click="toggleCarDetails(car)">{{ expandedCars.has(car.id) ? '⌄' : '›' }}</button><b class="car-sequence">{{ car.number }}</b><button class="row-toggle" @click="openCarEdit(car)"><strong>{{ car.vehicle }}</strong><small>{{ car.registration }} · VIN {{ car.vin }}</small><small>{{ car.status === 'delivered' ? 'Выдан' : car.status === 'ready' ? 'Всё поступило' : car.status === 'waiting' ? 'Ожидаются детали' : 'В работе' }}</small></button></div></div>
               <div class="cell"><span class="insurance-pill">{{ car.insurer }}</span><small>Начало: {{ car.start }}</small></div>
@@ -889,11 +892,11 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
           </article>
           <div v-if="!carsBusy && !carsError && !visibleCars.length" class="empty-state">По выбранному фильтру автомобили не найдены.</div>
         </div>
-        <div v-if="search.trim() && carTotalPages > 1" class="pagination-toolbar" aria-label="Пагинация поиска">
+        <div v-if="!search.trim() ? visibleCars.length > carPageSize : carTotalPages > 1" class="pagination-toolbar" aria-label="Пагинация клиентов">
           <span>Найдено: {{ carTotalItems }}</span>
           <button type="button" class="link-button" :disabled="carPage === 0" @click="changeCarPage(carPage - 1)">← Назад</button>
-          <strong>Страница {{ carPage + 1 }} из {{ carTotalPages }}</strong>
-          <button type="button" class="link-button" :disabled="carPage >= carTotalPages - 1" @click="changeCarPage(carPage + 1)">Вперёд →</button>
+          <strong>Страница {{ carPage + 1 }} из {{ search.trim() ? carTotalPages : Math.ceil(visibleCars.length / carPageSize) }}</strong>
+          <button type="button" class="link-button" :disabled="carPage >= (search.trim() ? carTotalPages : Math.ceil(visibleCars.length / carPageSize)) - 1" @click="changeCarPage(carPage + 1)">Вперёд →</button>
         </div>
       </section>
     </main>
