@@ -19,6 +19,7 @@ const suppliers = ref([])
 const shifts = ref([])
 const workCatalog = ref([])
 const counterparties = ref([])
+const vehicleAliases = ref([])
 const carsBusy = ref(false)
 const carsError = ref('')
 const modal = ref(null)
@@ -101,21 +102,30 @@ async function loadCars() {
 
 async function loadDirectories() {
   try {
-    const [insurerItems, supplierItems, shiftItems, workItems, counterpartyItems] = await Promise.all([
+    const [insurerItems, supplierItems, shiftItems, workItems, counterpartyItems, vehicleItems] = await Promise.all([
       requestJson('/api/v1/directories/insurers'),
       requestJson('/api/v1/directories/suppliers'),
       requestJson('/api/v1/directories/shifts'),
       requestJson('/api/v1/directories/works'),
       requestJson('/api/v1/counterparties'),
+      requestJson('/api/v1/directories/vehicles'),
     ])
     insurers.value = insurerItems
     suppliers.value = supplierItems
     shifts.value = shiftItems
     workCatalog.value = workItems
     counterparties.value = counterpartyItems
+    vehicleAliases.value = vehicleItems
   } catch (error) {
     showToast(`Справочники не загружены: ${error.message}`)
   }
+}
+
+function applyVehicleAlias(id) {
+  const item = vehicleAliases.value.find((entry) => String(entry.id) === String(id))
+  if (!item) return
+  carForm.value.vehicleName = item.sourceName
+  carForm.value.vehicleNameLatin = item.normalizedLatinName
 }
 
 function openCarForm() {
@@ -580,6 +590,7 @@ onMounted(() => {
     <footer class="global-footer"><span>Efgen Bosh · рабочий интерфейс</span><span>Данные разделов подключаются поэтапно</span></footer>
 
     <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
+    <div v-if="carFormVisible && vehicleAliases.length" class="vehicle-alias-toolbar"><span>Модель из справочника:</span><select @change="applyVehicleAlias($event.target.value)"><option value="">Выбрать модель</option><option v-for="item in vehicleAliases" :key="item.id" :value="item.id">{{ item.sourceName }}<template v-if="item.normalizedLatinName"> · {{ item.normalizedLatinName }}</template></option></select></div>
 
     <div v-if="workOrderVisible && workOrder" class="document-toolbar"><span>Номера документов:</span><input v-model="workOrder.orderNumber" placeholder="Заказ-наряд №" /><input v-model="workOrder.invoiceNumber" placeholder="Счёт №" /><input v-model="workOrder.actNumber" placeholder="Акт №" /><span>Печать:</span><button type="button" class="link-button" @click="printDocument('order')">Заказ-наряд</button><button type="button" class="link-button" @click="printDocument('invoice')">Счёт</button><button type="button" class="link-button" @click="printDocument('act')">Акт</button></div>
 
@@ -633,6 +644,8 @@ onMounted(() => {
 .defect-photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .defect-photo-grid img { width: 100%; height: 120px; object-fit: cover; border-radius: 9px; border: 1px solid var(--line); }
 .car-delete-toolbar { position: fixed; right: 24px; bottom: 24px; z-index: 20; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border: 1px solid #ead1d1; border-radius: 10px; background: #fff7f7; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); font-size: 12px; }
+.vehicle-alias-toolbar { position: fixed; left: 24px; bottom: 24px; z-index: 20; display: flex; gap: 10px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 12px; }
+.vehicle-alias-toolbar select { height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); }
 .directory-modal { width: min(760px, 100%); }
 .directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }
 .directory-tabs button { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }

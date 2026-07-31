@@ -3,15 +3,19 @@ package com.efgenbosh.backend.controller;
 import com.efgenbosh.backend.domain.Insurer;
 import com.efgenbosh.backend.domain.Shift;
 import com.efgenbosh.backend.domain.Supplier;
+import com.efgenbosh.backend.domain.VehicleAlias;
 import com.efgenbosh.backend.dto.directory.WorkCatalogItemResponse;
 import com.efgenbosh.backend.dto.directory.WorkCatalogItemRequest;
 import com.efgenbosh.backend.dto.directory.DirectoryItemRequest;
 import com.efgenbosh.backend.dto.directory.DirectoryItemResponse;
+import com.efgenbosh.backend.dto.directory.VehicleAliasRequest;
+import com.efgenbosh.backend.dto.directory.VehicleAliasResponse;
 import com.efgenbosh.backend.repository.InsurerRepository;
 import com.efgenbosh.backend.repository.ShiftRepository;
 import com.efgenbosh.backend.repository.SupplierRepository;
 import com.efgenbosh.backend.repository.WorkCatalogItemRepository;
 import com.efgenbosh.backend.repository.WorkCategoryRepository;
+import com.efgenbosh.backend.repository.VehicleAliasRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -26,12 +30,45 @@ public class DirectoryController {
     private final ShiftRepository shifts;
     private final WorkCatalogItemRepository workCatalog;
     private final WorkCategoryRepository workCategories;
+    private final VehicleAliasRepository vehicleAliases;
 
     public DirectoryController(InsurerRepository insurers, SupplierRepository suppliers, ShiftRepository shifts,
-                               WorkCatalogItemRepository workCatalog, WorkCategoryRepository workCategories) {
+                               WorkCatalogItemRepository workCatalog, WorkCategoryRepository workCategories,
+                               VehicleAliasRepository vehicleAliases) {
         this.insurers = insurers; this.suppliers = suppliers; this.shifts = shifts;
         this.workCatalog = workCatalog; this.workCategories = workCategories;
+        this.vehicleAliases = vehicleAliases;
     }
+
+    @GetMapping("/vehicles")
+    public List<VehicleAliasResponse> vehicles() {
+        return vehicleAliases.findAllByActiveTrueOrderBySortOrderAscSourceNameAsc().stream()
+            .map(VehicleAliasResponse::from).toList();
+    }
+
+    @PostMapping("/vehicles")
+    @ResponseStatus(HttpStatus.CREATED)
+    public VehicleAliasResponse createVehicle(@Valid @RequestBody VehicleAliasRequest request) {
+        VehicleAlias item = new VehicleAlias(); item.setSourceName(request.sourceName().trim()); item.setNormalizedLatinName(value(request.normalizedLatinName()));
+        return VehicleAliasResponse.from(vehicle(item));
+    }
+
+    @PutMapping("/vehicles/{id}")
+    public VehicleAliasResponse updateVehicle(@PathVariable Long id, @Valid @RequestBody VehicleAliasRequest request) {
+        VehicleAlias item = vehicleAliases.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Модель не найдена."));
+        item.setSourceName(request.sourceName().trim()); item.setNormalizedLatinName(value(request.normalizedLatinName()));
+        return VehicleAliasResponse.from(vehicle(item));
+    }
+
+    @DeleteMapping("/vehicles/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteVehicle(@PathVariable Long id) { vehicleAliases.findById(id).ifPresent(item -> { item.setActive(false); vehicleAliases.save(item); }); }
+
+    private VehicleAlias vehicle(VehicleAlias item) {
+        item = vehicleAliases.save(item);
+        return item;
+    }
+    private String value(String value) { return value == null ? "" : value.trim(); }
 
     @GetMapping("/insurers")
     public List<DirectoryItemResponse> insurers() {
