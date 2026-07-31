@@ -162,6 +162,7 @@ async function openWorkOrder(car) {
   try {
     workOrder.value = await requestJson(`/api/v1/cars/${car.id}/work-order`)
     workOrder.value.lines = workOrder.value.lines.map((line) => ({ ...line, catalogId: '' }))
+    workOrder.value.partLines = (workOrder.value.partLines || []).map((line) => ({ ...line }))
   } catch (error) {
     workOrderError.value = error.message
   } finally {
@@ -178,8 +179,22 @@ function removeWorkOrderLine(index) {
   workOrder.value.lines.splice(index, 1)
 }
 
+function addWorkOrderPartLine(part) {
+  if (workOrder.value.partLines.some((line) => line.partId === part.id)) return
+  workOrder.value.partLines.push({
+    partId: part.id, name: part.name, article: part.article || '', quantity: 1, price: 0,
+    sortOrder: workOrder.value.partLines.length,
+  })
+}
+
+function removeWorkOrderPartLine(index) {
+  workOrder.value.partLines.splice(index, 1)
+}
+
 function workOrderTotal() {
-  return (workOrder.value?.lines || []).reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.price) || 0), 0)
+  const linesTotal = (workOrder.value?.lines || []).reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.price) || 0), 0)
+  const partsTotal = (workOrder.value?.partLines || []).reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.price) || 0), 0)
+  return linesTotal + partsTotal
 }
 
 async function saveWorkOrder() {
@@ -193,6 +208,10 @@ async function saveWorkOrder() {
         status: workOrder.value.status,
         lines: workOrder.value.lines.map((line, index) => ({
           categoryName: line.categoryName || '', name: line.name, unit: line.unit,
+          quantity: Number(line.quantity), price: Number(line.price), sortOrder: index,
+        })),
+        partLines: workOrder.value.partLines.map((line, index) => ({
+          partId: line.partId, name: line.name, article: line.article || '',
           quantity: Number(line.quantity), price: Number(line.price), sortOrder: index,
         })),
       }),
@@ -412,7 +431,7 @@ onMounted(() => {
 
     <div v-if="partFormVisible" class="stub-overlay" @click.self="partFormVisible = false"><form class="data-modal compact-modal" @submit.prevent="savePart"><button type="button" class="icon-button" aria-label="Закрыть" @click="partFormVisible = false">×</button><p class="eyebrow">Заказ запчасти</p><h2>{{ editingPart ? 'Изменить деталь' : 'Добавить деталь' }}</h2><p class="modal-subtitle">{{ selectedCar?.number }} · {{ selectedCar?.vehicle }}</p><div class="data-form-grid"><label><span>Деталь</span><input v-model="partForm.name" required placeholder="Бампер передний" /></label><label><span>Артикул</span><input v-model="partForm.article" placeholder="604A124500" /></label><label><span>Поставщик</span><select v-model="partForm.supplierId"><option value="">Не выбран</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Ожидаемая дата</span><input v-model="partForm.expectedDate" type="date" /></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="partFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingPart ? 'Сохранить изменения' : 'Добавить деталь' }}</button></div></form></div>
 
-    <div v-if="workOrderVisible" class="stub-overlay" @click.self="workOrderVisible = false"><section class="data-modal work-order-modal"><button class="icon-button" aria-label="Закрыть" @click="workOrderVisible = false">×</button><p class="eyebrow">Рабочие данные</p><h2>Заказ-наряд · №{{ selectedWorkOrderCar?.number }}</h2><p class="modal-subtitle">{{ selectedWorkOrderCar?.vehicle }} · {{ selectedWorkOrderCar?.registration }}</p><div v-if="workOrderBusy" class="empty-state">Загружаем заказ-наряд…</div><div v-else-if="workOrderError" class="empty-state">{{ workOrderError }}</div><template v-else-if="workOrder"><div class="data-form-grid work-order-meta"><label><span>Дата документа</span><input v-model="workOrder.documentDate" type="date" /></label><label><span>Заказчик</span><input v-model="workOrder.customer" placeholder="ФИО или организация" /></label></div><div class="work-order-lines"><div class="work-order-line work-order-line-head"><span>Категория</span><span>Работа</span><span>Ед.</span><span>Кол-во</span><span>Цена</span><span>Сумма</span><span></span></div><div v-for="(line, index) in workOrder.lines" :key="line.id || `new-${index}`" class="work-order-line"><select v-model="line.catalogId" @change="applyCatalogLine(line)"><option value="">Своя работа</option><option v-for="item in workCatalog" :key="item.id" :value="String(item.id)">{{ item.categoryName }} · {{ item.name }}</option></select><input v-model="line.name" required placeholder="Ремонт двери" /><input v-model="line.unit" placeholder="шт." /><input v-model.number="line.quantity" type="number" min="0.001" step="0.001" /><input v-model.number="line.price" type="number" min="0" step="0.01" /><strong>{{ ((Number(line.quantity) || 0) * (Number(line.price) || 0)).toFixed(2) }}</strong><button type="button" class="icon-button small-icon" aria-label="Удалить строку" @click="removeWorkOrderLine(index)">×</button></div><button type="button" class="link-button" @click="addWorkOrderLine">＋ Добавить работу</button></div><div class="work-order-total">Итого: <strong>{{ workOrderTotal().toFixed(2) }}</strong></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="workOrderVisible = false">Закрыть</button><button class="button button-primary" @click="saveWorkOrder">Сохранить заказ-наряд</button></div></template></section></div>
+    <div v-if="workOrderVisible" class="stub-overlay" @click.self="workOrderVisible = false"><section class="data-modal work-order-modal"><button class="icon-button" aria-label="Закрыть" @click="workOrderVisible = false">×</button><p class="eyebrow">Рабочие данные</p><h2>Заказ-наряд · №{{ selectedWorkOrderCar?.number }}</h2><p class="modal-subtitle">{{ selectedWorkOrderCar?.vehicle }} · {{ selectedWorkOrderCar?.registration }}</p><div v-if="workOrderBusy" class="empty-state">Загружаем заказ-наряд…</div><div v-else-if="workOrderError" class="empty-state">{{ workOrderError }}</div><template v-else-if="workOrder"><div class="data-form-grid work-order-meta"><label><span>Дата документа</span><input v-model="workOrder.documentDate" type="date" /></label><label><span>Заказчик</span><input v-model="workOrder.customer" placeholder="ФИО или организация" /></label></div><div class="work-order-lines"><div class="work-order-line work-order-line-head"><span>Категория</span><span>Работа</span><span>Ед.</span><span>Кол-во</span><span>Цена</span><span>Сумма</span><span></span></div><div v-for="(line, index) in workOrder.lines" :key="line.id || `new-${index}`" class="work-order-line"><select v-model="line.catalogId" @change="applyCatalogLine(line)"><option value="">Своя работа</option><option v-for="item in workCatalog" :key="item.id" :value="String(item.id)">{{ item.categoryName }} · {{ item.name }}</option></select><input v-model="line.name" required placeholder="Ремонт двери" /><input v-model="line.unit" placeholder="шт." /><input v-model.number="line.quantity" type="number" min="0.001" step="0.001" /><input v-model.number="line.price" type="number" min="0" step="0.01" /><strong>{{ ((Number(line.quantity) || 0) * (Number(line.price) || 0)).toFixed(2) }}</strong><button type="button" class="icon-button small-icon" aria-label="Удалить строку" @click="removeWorkOrderLine(index)">×</button></div><button type="button" class="link-button" @click="addWorkOrderLine">＋ Добавить работу</button></div><div class="work-order-parts"><div class="work-order-line work-order-line-head"><span>Запчасть</span><span>Артикул</span><span>Кол-во</span><span>Цена</span><span>Сумма</span><span></span></div><div v-for="(line, index) in workOrder.partLines" :key="line.id || `part-new-${index}`" class="work-order-part-line"><strong>{{ line.name }}</strong><span>{{ line.article || "—" }}</span><input v-model.number="line.quantity" type="number" min="0.001" step="0.001" /><input v-model.number="line.price" type="number" min="0" step="0.01" /><strong>{{ ((Number(line.quantity) || 0) * (Number(line.price) || 0)).toFixed(2) }}</strong><button type="button" class="icon-button small-icon" aria-label="Удалить строку запчасти" @click="removeWorkOrderPartLine(index)">×</button></div><div class="work-order-part-picker"><span>Добавить запчасть:</span><button v-for="part in selectedWorkOrderCar.parts" :key="part.id" type="button" class="link-button" :disabled="workOrder.partLines.some((line) => line.partId === part.id)" @click="addWorkOrderPartLine(part)">{{ part.name }}</button></div></div><div class="work-order-total">Итого: <strong>{{ workOrderTotal().toFixed(2) }}</strong></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="workOrderVisible = false">Закрыть</button><button class="button button-primary" @click="saveWorkOrder">Сохранить заказ-наряд</button></div></template></section></div>
 
     <div v-if="modal" class="stub-overlay" @click.self="modal = null"><section class="stub-modal"><button class="icon-button" aria-label="Закрыть" @click="modal = null">×</button><p class="eyebrow">Заглушка раздела</p><h2>{{ modal }}</h2><p>Внешний вид и место действия уже подготовлены. Реальная загрузка и сохранение данных будут подключены к backend следующим этапом.</p><button class="button button-primary" @click="modal = null">Понятно</button></section></div>
     <div v-if="toast" class="toast">{{ toast }}</div>
@@ -445,6 +464,9 @@ onMounted(() => {
 .work-order-line input, .work-order-line select { width: 100%; height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
 .work-order-line-head { color: var(--muted); font-size: 11px; font-weight: 750; }
 .work-order-line strong { text-align: right; font-size: 13px; }
+.work-order-part-line { display: grid; grid-template-columns: 2fr 1.2fr .8fr .95fr .95fr 34px; gap: 8px; align-items: center; min-width: 760px; margin-bottom: 8px; }
+.work-order-part-line input { width: 100%; height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
+.work-order-part-picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; color: var(--muted); font-size: 12px; }
 .small-icon { width: 30px; height: 30px; }
 .work-order-total { margin-top: 18px; text-align: right; font-size: 16px; }
 </style>

@@ -3,7 +3,9 @@ package com.efgenbosh.backend.service;
 import com.efgenbosh.backend.domain.Car;
 import com.efgenbosh.backend.domain.WorkOrder;
 import com.efgenbosh.backend.domain.WorkOrderLine;
+import com.efgenbosh.backend.domain.WorkOrderPartLine;
 import com.efgenbosh.backend.dto.workorder.WorkOrderLineRequest;
+import com.efgenbosh.backend.dto.workorder.WorkOrderPartLineRequest;
 import com.efgenbosh.backend.dto.workorder.WorkOrderRequest;
 import com.efgenbosh.backend.dto.workorder.WorkOrderResponse;
 import com.efgenbosh.backend.repository.CarRepository;
@@ -43,6 +45,8 @@ public class WorkOrderService {
         }
         order.replaceLines((request.lines() == null ? List.<WorkOrderLineRequest>of() : request.lines())
             .stream().map(this::line).toList());
+        order.replacePartLines((request.partLines() == null ? List.<WorkOrderPartLineRequest>of() : request.partLines())
+            .stream().map(this::partLine).toList());
         order.touch();
         return WorkOrderResponse.from(orders.save(order));
     }
@@ -65,6 +69,17 @@ public class WorkOrderService {
         line.setCategoryNameSnapshot(value(request.categoryName()));
         line.setNameSnapshot(request.name().trim());
         line.setUnit(request.unit().trim());
+        line.setQuantity(request.quantity());
+        line.setPrice(request.price().setScale(2));
+        line.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
+        return line;
+    }
+
+    private WorkOrderPartLine partLine(WorkOrderPartLineRequest request) {
+        WorkOrderPartLine line = new WorkOrderPartLine();
+        line.setPartId(request.partId());
+        line.setNameSnapshot(request.name().trim());
+        line.setArticleSnapshot(value(request.article()));
         line.setQuantity(request.quantity());
         line.setPrice(request.price().setScale(2));
         line.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());

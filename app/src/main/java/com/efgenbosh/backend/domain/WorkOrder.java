@@ -25,6 +25,8 @@ public class WorkOrder {
     @Version @Column(nullable = false) private Long version;
     @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC, id ASC") private List<WorkOrderLine> lines = new ArrayList<>();
+    @OneToMany(mappedBy = "workOrder", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC, id ASC") private List<WorkOrderPartLine> partLines = new ArrayList<>();
 
     public Long getId() { return id; }
     public Car getCar() { return car; }
@@ -48,6 +50,10 @@ public class WorkOrder {
     public List<WorkOrderLine> getLines() { return lines; }
     public void replaceLines(List<WorkOrderLine> values) { lines.clear(); values.forEach(this::addLine); }
     public void addLine(WorkOrderLine line) { lines.add(line); line.setWorkOrder(this); }
-    public BigDecimal total() { return lines.stream().map(WorkOrderLine::total).reduce(BigDecimal.ZERO, BigDecimal::add); }
+    public List<WorkOrderPartLine> getPartLines() { return partLines; }
+    public void replacePartLines(List<WorkOrderPartLine> values) { partLines.clear(); values.forEach(this::addPartLine); }
+    public void addPartLine(WorkOrderPartLine line) { partLines.add(line); line.setWorkOrder(this); }
+    public BigDecimal total() { return lines.stream().map(WorkOrderLine::total).reduce(BigDecimal.ZERO, BigDecimal::add)
+        .add(partLines.stream().map(WorkOrderPartLine::total).reduce(BigDecimal.ZERO, BigDecimal::add)); }
     public void touch() { updatedAt = OffsetDateTime.now(); }
 }

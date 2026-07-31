@@ -9,5 +9,6 @@ public record WorkOrderRequest(
     LocalDate documentDate,
     @Size(max = 500) String customer,
     @Size(max = 32) String status,
-    @Valid List<WorkOrderLineRequest> lines
+    @Valid List<WorkOrderLineRequest> lines,
+    @Valid List<WorkOrderPartLineRequest> partLines
 ) { }
