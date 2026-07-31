@@ -2,6 +2,7 @@ package com.efgenbosh.backend.controller;
 
 import com.efgenbosh.backend.dto.car.CarRequest;
 import com.efgenbosh.backend.dto.car.CarResponse;
+import com.efgenbosh.backend.dto.car.CarPageResponse;
 import com.efgenbosh.backend.dto.car.PartRequest;
 import com.efgenbosh.backend.dto.car.PartResponse;
 import com.efgenbosh.backend.service.CarService;
@@ -33,6 +34,9 @@ public class CarController {
 
     @GetMapping("/search")
     public List<CarResponse> search(@RequestParam(required = false) String q) { return service.search(q); }
+
+    @GetMapping("/search/page")
+    public CarPageResponse searchPage(@RequestParam(required = false) String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "25") int size) { return service.searchPage(q, page, size); }
 
     @GetMapping("/{id}")
     public CarResponse findById(@PathVariable Long id) { return service.findById(id); }

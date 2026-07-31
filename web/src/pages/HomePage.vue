@@ -23,6 +23,10 @@ const vehicleAliases = ref([])
 const contractors = ref([])
 const carsBusy = ref(false)
 const carsError = ref('')
+const carPage = ref(0)
+const carPageSize = ref(25)
+const carTotalPages = ref(0)
+const carTotalItems = ref(0)
 const carHistory = ref([])
 const modal = ref(null)
 const toast = ref('')
@@ -98,12 +102,27 @@ async function loadCars() {
   carsBusy.value = true
   carsError.value = ''
   try {
-    cars.value = await requestJson(search.value.trim() ? `/api/v1/cars/search?q=${encodeURIComponent(search.value.trim())}` : '/api/v1/cars')
+    if (search.value.trim()) {
+      const result = await requestJson(`/api/v1/cars/search/page?q=${encodeURIComponent(search.value.trim())}&page=${carPage.value}&size=${carPageSize.value}`)
+      cars.value = result.items
+      carTotalPages.value = result.totalPages
+      carTotalItems.value = result.totalItems
+    } else {
+      cars.value = await requestJson('/api/v1/cars')
+      carPage.value = 0
+      carTotalPages.value = 0
+      carTotalItems.value = cars.value.length
+    }
   } catch (error) {
     carsError.value = error.message
   } finally {
     carsBusy.value = false
   }
+}
+
+function changeCarPage(page) {
+  carPage.value = Math.max(0, Math.min(page, Math.max(0, carTotalPages.value - 1)))
+  loadCars()
 }
 
 async function loadDirectories() {
@@ -579,7 +598,7 @@ onMounted(() => {
   }
 })
 
-watch(search, () => { window.clearTimeout(window.__efgenSearchTimer); window.__efgenSearchTimer = window.setTimeout(loadCars, 250) })
+watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearchTimer); window.__efgenSearchTimer = window.setTimeout(loadCars, 250) })
 </script>
 
 <template>
@@ -645,6 +664,12 @@ watch(search, () => { window.clearTimeout(window.__efgenSearchTimer); window.__e
             <div class="row-actions"><button class="link-button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" @click="openWorkOrder(car)">Заказ-наряд</button><button class="link-button" @click="toggleAccepted(car)">{{ car.acceptedAt ? 'Отменить приёмку' : 'Принять автомобиль' }}</button><button class="link-button" @click="openPartForm(car)">＋ Запчасть</button><template v-for="part in car.parts" :key="part.id"><button class="link-button" @click="togglePartReceived(car, part)">{{ part.received ? `Отменить: ${part.name}` : `Поступила: ${part.name}` }}</button><button class="link-button" @click="openPartEdit(car, part)">Изменить: {{ part.name }}</button><button class="link-button danger-link" @click="deletePart(car, part)">Удалить</button></template></div>
           </article>
           <div v-if="!carsBusy && !carsError && !visibleCars.length" class="empty-state">По выбранному фильтру автомобили не найдены.</div>
+        </div>
+        <div v-if="search.trim() && carTotalPages > 1" class="pagination-toolbar" aria-label="Пагинация поиска">
+          <span>Найдено: {{ carTotalItems }}</span>
+          <button type="button" class="link-button" :disabled="carPage === 0" @click="changeCarPage(carPage - 1)">← Назад</button>
+          <strong>Страница {{ carPage + 1 }} из {{ carTotalPages }}</strong>
+          <button type="button" class="link-button" :disabled="carPage >= carTotalPages - 1" @click="changeCarPage(carPage + 1)">Вперёд →</button>
         </div>
       </section>
     </main>
@@ -724,6 +749,8 @@ watch(search, () => { window.clearTimeout(window.__efgenSearchTimer); window.__e
 .defect-transfer-button { position: fixed; right: 24px; bottom: 76px; z-index: 21; }
 .car-history-toolbar { position: fixed; left: 24px; top: 88px; z-index: 20; display: flex; gap: 9px; align-items: center; max-width: 560px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 11px; }
 .generated-documents-toolbar { position: fixed; left: 24px; bottom: 76px; z-index: 20; display: flex; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 11px; }
+.pagination-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding: 14px 4px 2px; color: var(--muted); font-size: 12px; }
+.pagination-toolbar button:disabled { cursor: not-allowed; opacity: .45; }
 .bundle-print-button { position: fixed; right: 24px; bottom: 76px; z-index: 21; }
 .directory-modal { width: min(760px, 100%); }
 .directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }

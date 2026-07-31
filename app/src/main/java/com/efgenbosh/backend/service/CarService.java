@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import com.efgenbosh.backend.dto.car.CarPageResponse;
 
 @Service
 public class CarService {
@@ -51,6 +52,14 @@ public class CarService {
             || value(car.getRegistrationNumber()).toLowerCase().contains(needle)
             || value(car.getVin()).toLowerCase().contains(needle)
             || value(car.getClaimNumber()).toLowerCase().contains(needle)).map(this::response).toList();
+    }
+
+    @Transactional
+    public CarPageResponse searchPage(String query, int page, int size) {
+        int safeSize = Math.max(1, Math.min(size, 100)); int safePage = Math.max(0, page);
+        List<CarResponse> all = search(query); int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
+        long pages = all.isEmpty() ? 0 : (all.size() + safeSize - 1L) / safeSize;
+        return new CarPageResponse(all.subList(from, to), safePage, safeSize, pages, all.size());
     }
 
     @Transactional
