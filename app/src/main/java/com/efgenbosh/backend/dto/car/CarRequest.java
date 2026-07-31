@@ -16,8 +16,6 @@ public record CarRequest(
     Long insurerId,
     Long contractorId,
     LocalDate acceptedAt,
-    LocalDate startedAt,
-    LocalDate appointmentDate,
     Long shiftId,
     String comment,
     String documentFolderUrl

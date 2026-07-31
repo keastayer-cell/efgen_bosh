@@ -176,8 +176,7 @@ public class CarService {
         car.setInsuredPerson(value(r.insuredPerson()));
         car.setClaimNumber(value(r.claimNumber()));
         car.setInsurerId(r.insurerId()); car.setContractorId(r.contractorId());
-        car.setAcceptedAt(r.acceptedAt()); car.setStartedAt(r.startedAt());
-        car.setAppointmentDate(r.appointmentDate()); car.setShiftId(r.shiftId());
+        car.setAcceptedAt(r.acceptedAt()); car.setShiftId(r.shiftId());
         car.setComment(value(r.comment())); car.setDocumentFolderUrl(value(r.documentFolderUrl()));
     }
 
