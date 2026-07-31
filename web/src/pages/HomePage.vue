@@ -869,6 +869,7 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 .car-photo-card small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .new-car-photo-toolbar { position: fixed; left: 24px; bottom: 24px; z-index: 21; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 11px; }
 .photo-form-field small { color: var(--muted); font-size: 10px; font-weight: 400; }
+.data-form-grid label:has(input[type='url']) { display: none; }
 .form-photo-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .form-photo-preview > div { position: relative; width: 86px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
 .form-photo-preview img { display: block; width: 86px; height: 64px; object-fit: cover; }
