@@ -32,6 +32,7 @@ const carPageSize = ref(25)
 const carTotalPages = ref(0)
 const carTotalItems = ref(0)
 const carHistory = ref([])
+const expandedCars = ref(new Set())
 const modal = ref(null)
 const toast = ref('')
 const carFormVisible = ref(false)
@@ -84,8 +85,8 @@ const mappedCars = computed(() => cars.value.map((car) => ({
   vehicle: car.vehicleName,
   insurer: insurers.value.find((item) => item.id === car.insurerId)?.name || (car.insurerId ? `Страховая #${car.insurerId}` : 'Страховая не выбрана'),
   start: car.startedAt || car.acceptedAt || '—',
-  parts: car.parts.length ? `${car.parts.filter((part) => part.received).length} / ${car.parts.length}` : '—',
-  partsList: car.parts,
+  parts: car.parts,
+  partsSummary: car.parts.length ? `${car.parts.filter((part) => part.received).length} / ${car.parts.length}` : '—',
   comment: car.comment || '—',
   record: car.appointmentDate || '—',
   shift: shifts.value.find((item) => item.id === car.shiftId)?.name || (car.shiftId ? `Смена #${car.shiftId}` : '—'),
@@ -99,7 +100,7 @@ const visibleCars = computed(() => mappedCars.value.filter((car) => {
   const matchesInsurer = !insurerFilter.value || String(car.insurerId || '') === insurerFilter.value
   const matchesShift = !shiftFilter.value || String(car.shiftId || '') === shiftFilter.value
   const matchesContractor = !contractorFilter.value || String(car.contractorId || '') === contractorFilter.value
-  const matchesOverdue = !overduePartsOnly.value || car.partsList?.some((part) => !part.received && part.expectedDate && part.expectedDate < new Date().toISOString().slice(0, 10))
+  const matchesOverdue = !overduePartsOnly.value || car.parts?.some((part) => !part.received && part.expectedDate && part.expectedDate < new Date().toISOString().slice(0, 10))
   const query = search.value.trim().toLowerCase()
   return matchesFilter && matchesInsurer && matchesShift && matchesContractor && matchesOverdue && (!query || Object.values(car).some((value) => String(value).toLowerCase().includes(query)))
 }))
@@ -461,20 +462,6 @@ function printDocument(type) {
   }, 1000)
 }
 
-function openPartEdit(car, part) {
-  modal.value = null
-  selectedCar.value = car
-  editingPart.value = part
-  partForm.value = {
-    name: part.name || '',
-    article: part.article || '',
-    supplierId: part.supplierId ? String(part.supplierId) : '',
-    expectedDate: part.expectedDate || '',
-    sortOrder: part.sortOrder || 0,
-  }
-  partFormVisible.value = true
-}
-
 async function saveCar() {
   try {
     const path = editingCar.value ? `/api/v1/cars/${editingCar.value.id}` : '/api/v1/cars'
@@ -570,6 +557,17 @@ async function togglePartReceived(car, part) {
   }
 }
 
+async function updatePart(car, part, changes) {
+  try {
+    await requestJson(`/api/v1/cars/${car.id}/parts/${part.id}`, { method: 'PUT', body: JSON.stringify({ name: part.name, article: part.article || '', supplierId: changes.supplierId === undefined ? part.supplierId : (changes.supplierId ? Number(changes.supplierId) : null), expectedDate: changes.expectedDate === undefined ? part.expectedDate : (changes.expectedDate || null), sortOrder: part.sortOrder || 0 }) })
+    await loadCars()
+    showToast('Запчасть обновлена')
+  } catch (error) { showToast(error.message) }
+}
+
+function updatePartSupplier(car, part, supplierId) { updatePart(car, part, { supplierId }) }
+function updatePartExpectedDate(car, part, expectedDate) { updatePart(car, part, { expectedDate }) }
+
 async function submitLogin() {
   authBusy.value = true
   authError.value = ''
@@ -616,6 +614,12 @@ function openStub(name) {
 function showToast(message) {
   toast.value = message
   window.setTimeout(() => { toast.value = '' }, 2600)
+}
+
+function toggleCarDetails(car) {
+  const next = new Set(expandedCars.value)
+  if (next.has(car.id)) next.delete(car.id); else next.add(car.id)
+  expandedCars.value = next
 }
 
 onMounted(() => {
@@ -684,17 +688,17 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
         <div class="cars-list" aria-live="polite">
           <div v-if="carsBusy" class="empty-state">Загружаем реестр автомобилей…</div>
           <div v-else-if="carsError" class="empty-state">{{ carsError }} <button class="link-button" @click="loadCars">Повторить</button></div>
-          <article v-for="car in visibleCars" :key="car.number" class="car-row" :class="`is-${car.status}`">
+          <article v-for="car in visibleCars" :key="car.number" class="car-row" :class="[`is-${car.status}`, { 'is-open': expandedCars.has(car.id) }]">
             <div class="car-summary">
-              <div class="cell car-identity"><div class="car-title"><b class="car-sequence">{{ car.number }}</b><button class="row-toggle" @click="openCarEdit(car)"><strong>{{ car.vehicle }}</strong><small>{{ car.registration }} · VIN {{ car.vin }}</small></button></div></div>
+              <div class="cell car-identity"><div class="car-title"><button class="row-chevron" type="button" :aria-expanded="expandedCars.has(car.id)" @click="toggleCarDetails(car)">{{ expandedCars.has(car.id) ? '⌄' : '›' }}</button><b class="car-sequence">{{ car.number }}</b><button class="row-toggle" @click="openCarEdit(car)"><strong>{{ car.vehicle }}</strong><small>{{ car.registration }} · VIN {{ car.vin }}</small><small>{{ car.status === 'delivered' ? 'Выдан' : car.status === 'ready' ? 'Всё поступило' : car.status === 'waiting' ? 'Ожидаются детали' : 'В работе' }}</small></button></div></div>
               <div class="cell"><strong>{{ car.insurer }}</strong><small>Начало: {{ car.start }}</small></div>
-              <div class="cell"><strong>{{ car.parts }}</strong><small>{{ car.status === 'waiting' ? 'ожидаются детали' : 'все детали на месте' }}</small></div>
+              <div class="cell parts-glance"><span class="progress-ring" :style="{ '--progress': `${car.parts.length ? Math.round((car.parts.filter((part) => part.received).length / car.parts.length) * 100) : 0}%` }" :data-label="`${car.parts.filter((part) => part.received).length}/${car.parts.length}`"></span><span><strong>{{ car.parts.length ? `${car.parts.filter((part) => part.received).length} из ${car.parts.length} поступили` : 'Нет деталей' }}</strong><small>{{ car.parts.some((part) => !part.received && part.expectedDate && part.expectedDate < new Date().toISOString().slice(0, 10)) ? 'Есть просроченные детали' : 'Поступление по графику' }}</small></span></div>
               <div class="cell muted-cell">{{ car.comment }}</div>
               <div class="cell"><a v-if="car.documentFolderUrl" class="link-button" :href="car.documentFolderUrl" target="_blank" rel="noreferrer">Открыть папку</a><button v-else class="link-button" @click="openStub('Документы')">Папка не указана</button></div>
               <div class="cell muted-cell">{{ car.record }}</div><div class="cell">{{ car.shift }}</div>
               <div class="cell"><button v-if="car.status !== 'delivered'" class="link-button" @click="toggleDelivered(car)">Выдать</button><button v-else class="link-button" @click="toggleDelivered(car)">Отменить</button></div>
             </div>
-            <div class="row-actions"><button class="link-button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" @click="openWorkOrder(car)">Заказ-наряд</button><button class="link-button" @click="toggleAccepted(car)">{{ car.acceptedAt ? 'Отменить приёмку' : 'Принять автомобиль' }}</button><button class="link-button" @click="openPartForm(car)">＋ Запчасть</button><template v-for="part in car.parts" :key="part.id"><button class="link-button" @click="togglePartReceived(car, part)">{{ part.received ? `Отменить: ${part.name}` : `Поступила: ${part.name}` }}</button><button class="link-button" @click="openPartEdit(car, part)">Изменить: {{ part.name }}</button><button class="link-button danger-link" @click="deletePart(car, part)">Удалить</button></template></div>
+            <div v-if="expandedCars.has(car.id)" class="car-details"><div class="details-panel"><div v-if="car.parts.length" class="details-head"><span>Поступление</span><span>Деталь</span><span>Артикул</span><span>Поставщик</span><span>Дата поступления</span><span></span></div><div v-for="part in car.parts" :key="part.id" class="part-row" :class="{ 'is-received': part.received }"><label class="received-control"><input type="checkbox" :checked="part.received" @change="togglePartReceived(car, part)" /><span>{{ part.received ? 'Поступила' : 'Ожидается' }}</span></label><div><div class="part-name">{{ part.name }}</div><small v-if="part.receivedAt">Фактически: {{ part.receivedAt }}</small></div><span class="article">{{ part.article || '—' }}</span><select :value="part.supplierId || ''" @change="updatePartSupplier(car, part, $event.target.value)"><option value="">Не указан</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select><input class="part-date-input" type="date" :value="part.expectedDate || ''" @change="updatePartExpectedDate(car, part, $event.target.value)" /><button class="part-delete" type="button" title="Удалить деталь" @click="deletePart(car, part)">×</button></div><div class="details-actions"><button class="link-button" type="button" @click="openPartForm(car)">＋ Добавить деталь</button><button class="link-button" type="button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" type="button" @click="openWorkOrder(car)">ЗН+Счёт</button><button class="link-button" type="button" @click="toggleAccepted(car)">{{ car.acceptedAt ? 'Отменить приёмку' : 'Принять автомобиль' }}</button></div></div></div>
           </article>
           <div v-if="!carsBusy && !carsError && !visibleCars.length" class="empty-state">По выбранному фильтру автомобили не найдены.</div>
         </div>
@@ -799,6 +803,24 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 .extended-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
 .extended-filters select { height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--soft); font-size: 11px; }
 .overdue-filter { display: flex; gap: 5px; align-items: center; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.row-chevron { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; color: var(--muted); background: var(--soft); font-size: 20px; line-height: 1; }
+.parts-glance { display: flex; align-items: center; gap: 10px; }
+.progress-ring { width: 48px; height: 48px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--green) var(--progress), #dce8e3 0); position: relative; }
+.progress-ring::after { content: ''; position: absolute; width: 36px; height: 36px; border-radius: 50%; background: white; }
+.progress-ring::before { content: attr(data-label); position: relative; z-index: 1; color: var(--brand); font-size: 11px; font-weight: 800; }
+.car-details { padding: 0 21px 16px 69px; }
+.details-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #fbfdfc; }
+.details-head, .part-row { display: grid; grid-template-columns: 1fr 2fr 1.5fr 1.4fr 1.25fr 30px; gap: 12px; align-items: center; min-width: 900px; }
+.details-head { padding: 11px 14px; color: var(--muted); background: #f2f7f5; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.part-row { padding: 12px 14px; border-top: 1px solid var(--line); font-size: 12px; }
+.part-row select, .part-date-input { width: 100%; height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: white; font-size: 11px; }
+.received-control { display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 750; }
+.received-control input { width: 21px; height: 21px; accent-color: var(--green); }
+.part-name { font-weight: 750; }
+.part-row small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+.article { color: var(--muted); font-family: Consolas, monospace; }
+.part-delete { border: 0; color: var(--muted); background: transparent; font-size: 18px; }
+.details-actions { display: flex; gap: 16px; padding: 13px 14px; border-top: 1px solid var(--line); }
 .directory-list { display: grid; gap: 7px; max-height: 260px; overflow: auto; margin-top: 22px; }
 .directory-item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-size: 13px; }
 .directory-item small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
