@@ -33,6 +33,10 @@ const carTotalPages = ref(0)
 const carTotalItems = ref(0)
 const carHistory = ref([])
 const expandedCars = ref(new Set())
+const carPhotos = ref([])
+const photosVisible = ref(false)
+const photosCar = ref(null)
+const photosBusy = ref(false)
 const modal = ref(null)
 const toast = ref('')
 const carFormVisible = ref(false)
@@ -221,7 +225,37 @@ function openCarForm() {
   modal.value = null
   editingCar.value = null
   carForm.value = emptyCarForm()
+  carPhotos.value = []
   carFormVisible.value = true
+}
+
+async function openCarPhotos(car) {
+  photosCar.value = car
+  photosVisible.value = true
+  photosBusy.value = true
+  try { carPhotos.value = await requestJson(`/api/v1/cars/${car.id}/photos`) } catch (error) { showToast(error.message) } finally { photosBusy.value = false }
+}
+
+function readCarPhotos(event) {
+  const files = Array.from(event.target.files || []).slice(0, 20 - carPhotos.value.length)
+  files.forEach((file) => {
+    if (!file.type.startsWith('image/') || file.size > 8 * 1024 * 1024) { showToast('Фото должно быть изображением до 8 МБ'); return }
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const photo = { fileName: file.name, mimeType: file.type, dataUrl: reader.result, pending: true }
+      carPhotos.value.push(photo)
+      if (photosVisible.value && photosCar.value?.id) {
+        try { const saved = await requestJson(`/api/v1/cars/${photosCar.value.id}/photos`, { method: 'POST', body: JSON.stringify(photo) }); Object.assign(photo, saved); delete photo.pending; showToast('Фото сохранено в документах') } catch (error) { carPhotos.value = carPhotos.value.filter((item) => item !== photo); showToast(error.message) }
+      }
+    }
+    reader.readAsDataURL(file)
+  })
+  event.target.value = ''
+}
+
+async function deleteCarPhoto(photo) {
+  if (photo.pending) { carPhotos.value = carPhotos.value.filter((item) => item !== photo); return }
+  try { await requestJson(`/api/v1/cars/${photosCar.value.id}/photos/${photo.id}`, { method: 'DELETE' }); carPhotos.value = carPhotos.value.filter((item) => item.id !== photo.id); showToast('Фото удалено') } catch (error) { showToast(error.message) }
 }
 
 function openDirectories() {
@@ -282,6 +316,7 @@ async function openCarEdit(car) {
   const source = cars.value.find((item) => item.id === car.id) || car
   selectedCar.value = source
   carHistory.value = await requestJson(`/api/v1/cars/${source.id}/history`).catch(() => [])
+  carPhotos.value = await requestJson(`/api/v1/cars/${source.id}/photos`).catch(() => [])
   carForm.value = {
     vehicleName: source.vehicleName || '',
     vehicleNameLatin: source.vehicleNameLatin || '',
@@ -471,10 +506,14 @@ async function saveCar() {
       shiftId: carForm.value.shiftId ? Number(carForm.value.shiftId) : null,
       contractorId: carForm.value.contractorId ? Number(carForm.value.contractorId) : null,
     }
-    await requestJson(path, {
+    const savedCar = await requestJson(path, {
       method: editingCar.value ? 'PUT' : 'POST',
       body: JSON.stringify(payload),
     })
+    const pendingPhotos = carPhotos.value.filter((photo) => photo.pending)
+    for (const photo of pendingPhotos) {
+      await requestJson(`/api/v1/cars/${savedCar.id}/photos`, { method: 'POST', body: JSON.stringify({ fileName: photo.fileName, mimeType: photo.mimeType, dataUrl: photo.dataUrl }) })
+    }
     carFormVisible.value = false
     await loadCars()
     showToast(editingCar.value ? 'Автомобиль сохранён' : 'Автомобиль добавлен')
@@ -708,7 +747,7 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
               <div class="cell"><span class="insurance-pill">{{ car.insurer }}</span><small>Начало: {{ car.start }}</small></div>
               <div class="cell parts-glance"><span class="progress-ring" :style="{ '--progress': `${car.parts.length ? Math.round((car.parts.filter((part) => part.received).length / car.parts.length) * 100) : 0}%` }" :data-label="`${car.parts.filter((part) => part.received).length}/${car.parts.length}`"></span><span><strong>{{ car.parts.length ? `${car.parts.filter((part) => part.received).length} из ${car.parts.length} поступили` : 'Нет деталей' }}</strong><small>{{ car.parts.some((part) => !part.received && part.expectedDate && part.expectedDate < new Date().toISOString().slice(0, 10)) ? 'Есть просроченные детали' : 'Поступление по графику' }}</small></span></div>
               <div class="cell"><input class="comment-input" type="text" :value="car.comment === '—' ? '' : car.comment" placeholder="Комментарий..." @change="updateCarInline(car, 'comment', $event.target.value)" /></div>
-              <div class="cell"><a v-if="car.documentFolderUrl" class="link-button" :href="car.documentFolderUrl" target="_blank" rel="noreferrer">Открыть папку</a><button v-else class="link-button" @click="openStub('Документы')">Папка не указана</button></div>
+              <div class="cell"><button class="link-button" @click="openCarPhotos(car)">Документы / фото</button><a v-if="car.documentFolderUrl" class="link-button" :href="car.documentFolderUrl" target="_blank" rel="noreferrer">Открыть папку</a></div>
               <div class="cell"><input class="appointment-input" type="date" :value="car.appointmentDate || ''" @change="updateCarInline(car, 'appointmentDate', $event.target.value)" /></div><div class="cell"><select class="shift-select" :value="car.shiftId || ''" @change="updateCarInline(car, 'shiftId', $event.target.value)"><option value="">Не назначена</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></div>
               <div class="cell"><label class="delivered-check"><input type="checkbox" :checked="car.status === 'delivered'" @change="toggleDelivered(car)" /><span>Выдан</span></label><small v-if="car.deliveredAt">{{ car.deliveredAt }}</small></div>
             </div>
@@ -732,8 +771,9 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
     <div v-if="workOrderVisible && generatedDocuments.length" class="generated-documents-toolbar"><strong>Документы:</strong><span v-for="doc in generatedDocuments.slice(0, 6)" :key="doc.id">{{ doc.documentType }}{{ doc.documentNumber ? ` №${doc.documentNumber}` : '' }}</span></div>
     <button v-if="workOrderVisible && workOrder" type="button" class="bundle-print-button button button-cloud" @click="printDocument('bundle')">Печатный комплект</button>
 
-    <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button" @click="printCarDocument('acceptance')">Акт приёма</button><button type="button" class="link-button" @click="printCarDocument('delivery')">Акт выдачи</button><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
+    <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button" @click="openCarPhotos(editingCar)">Фото</button><button type="button" class="link-button" @click="printCarDocument('acceptance')">Акт приёма</button><button type="button" class="link-button" @click="printCarDocument('delivery')">Акт выдачи</button><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
     <div v-if="carFormVisible && editingCar && carHistory.length" class="car-history-toolbar"><strong>История:</strong><span v-for="event in carHistory.slice(0, 4)" :key="event.id">{{ event.details }}</span></div>
+    <div v-if="carFormVisible && !editingCar" class="new-car-photo-toolbar"><label class="button button-cloud"><span>＋ Фото автомобиля</span><input class="photo-file-input" type="file" accept="image/*" multiple @change="readCarPhotos" /></label><span v-if="carPhotos.length">Выбрано фото: {{ carPhotos.length }}</span></div>
     <div v-if="carFormVisible && vehicleAliases.length" class="vehicle-alias-toolbar"><span>Модель из справочника:</span><select @change="applyVehicleAlias($event.target.value)"><option value="">Выбрать модель</option><option v-for="item in vehicleAliases" :key="item.id" :value="item.id">{{ item.sourceName }}<template v-if="item.normalizedLatinName"> · {{ item.normalizedLatinName }}</template></option></select></div>
     <div v-if="carFormVisible && contractors.length" class="contractor-toolbar"><span>Исполнитель:</span><select :value="carForm.contractorId" @change="applyContractor($event.target.value)"><option value="">Не выбран</option><option v-for="item in contractors" :key="item.id" :value="item.id">{{ item.shortName }} · {{ item.code }}</option></select></div>
 
@@ -751,6 +791,7 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
     <div v-if="workOrderVisible" class="stub-overlay" @click.self="workOrderVisible = false"><section class="data-modal work-order-modal print-target"><button class="icon-button" aria-label="Закрыть" @click="workOrderVisible = false">×</button><p class="eyebrow">Рабочие данные</p><h2>Заказ-наряд · №{{ selectedWorkOrderCar?.number }}</h2><p class="modal-subtitle">{{ selectedWorkOrderCar?.vehicle }} · {{ selectedWorkOrderCar?.registration }}</p><div v-if="workOrderBusy" class="empty-state">Загружаем заказ-наряд…</div><div v-else-if="workOrderError" class="empty-state">{{ workOrderError }}</div><template v-else-if="workOrder"><div class="data-form-grid work-order-meta"><label><span>Дата документа</span><input v-model="workOrder.documentDate" type="date" /></label><label><span>Заказчик из справочника</span><select v-model="workOrder.customer"><option value="">Произвольный заказчик</option><option v-for="item in counterparties" :key="item.id" :value="item.name">{{ item.name }} · {{ item.inn || "без ИНН" }}</option></select></label><label><span>Заказчик</span><input v-model="workOrder.customer" placeholder="ФИО или организация" /></label></div><div class="work-order-lines"><div class="work-order-line work-order-line-head"><span>Категория</span><span>Работа</span><span>Ед.</span><span>Кол-во</span><span>Цена</span><span>Сумма</span><span></span></div><div v-for="(line, index) in workOrder.lines" :key="line.id || `new-${index}`" class="work-order-line"><select v-model="line.catalogId" @change="applyCatalogLine(line)"><option value="">Своя работа</option><option v-for="item in workCatalog" :key="item.id" :value="String(item.id)">{{ item.categoryName }} · {{ item.name }}</option></select><input v-model="line.name" required placeholder="Ремонт двери" /><input v-model="line.unit" placeholder="шт." /><input v-model.number="line.quantity" type="number" min="0.001" step="0.001" /><input v-model.number="line.price" type="number" min="0" step="0.01" /><strong>{{ ((Number(line.quantity) || 0) * (Number(line.price) || 0)).toFixed(2) }}</strong><button type="button" class="icon-button small-icon" aria-label="Удалить строку" @click="removeWorkOrderLine(index)">×</button></div><button type="button" class="link-button" @click="addWorkOrderLine">＋ Добавить работу</button></div><div class="work-order-parts"><div class="work-order-line work-order-line-head"><span>Запчасть</span><span>Артикул</span><span>Кол-во</span><span>Цена</span><span>Сумма</span><span></span></div><div v-for="(line, index) in workOrder.partLines" :key="line.id || `part-new-${index}`" class="work-order-part-line"><strong>{{ line.name }}</strong><span>{{ line.article || "—" }}</span><input v-model.number="line.quantity" type="number" min="0.001" step="0.001" /><input v-model.number="line.price" type="number" min="0" step="0.01" /><strong>{{ ((Number(line.quantity) || 0) * (Number(line.price) || 0)).toFixed(2) }}</strong><button type="button" class="icon-button small-icon" aria-label="Удалить строку запчасти" @click="removeWorkOrderPartLine(index)">×</button></div><div class="work-order-part-picker"><span>Добавить запчасть:</span><button v-for="part in selectedWorkOrderCar.parts" :key="part.id" type="button" class="link-button" :disabled="workOrder.partLines.some((line) => line.partId === part.id)" @click="addWorkOrderPartLine(part)">{{ part.name }}</button></div></div><div class="work-order-total">Итого: <strong>{{ workOrderTotal().toFixed(2) }}</strong></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="workOrderVisible = false">Закрыть</button><button class="button button-cloud dark-button" @click="printWorkOrder">Печать</button><button class="button button-primary" @click="saveWorkOrder">Сохранить заказ-наряд</button></div></template></section></div>
 
     <div v-if="modal" class="stub-overlay" @click.self="modal = null"><section class="stub-modal"><button class="icon-button" aria-label="Закрыть" @click="modal = null">×</button><p class="eyebrow">Заглушка раздела</p><h2>{{ modal }}</h2><p>Внешний вид и место действия уже подготовлены. Реальная загрузка и сохранение данных будут подключены к backend следующим этапом.</p><button class="button button-primary" @click="modal = null">Понятно</button></section></div>
+    <div v-if="photosVisible" class="stub-overlay" @click.self="photosVisible = false"><section class="data-modal photos-modal"><button class="icon-button" aria-label="Закрыть" @click="photosVisible = false">×</button><p class="eyebrow">Документы автомобиля</p><h2>Фото автомобиля</h2><p class="modal-subtitle">{{ photosCar?.number }} · {{ photosCar?.vehicle }}</p><label class="photo-upload-button button button-primary"><span>＋ Добавить фото</span><input class="photo-file-input" type="file" accept="image/*" multiple @change="readCarPhotos" /></label><div v-if="photosBusy" class="empty-state">Загружаем фотографии…</div><div v-else class="car-photo-grid"><div v-for="photo in carPhotos" :key="photo.id || photo.dataUrl" class="car-photo-card"><img :src="photo.dataUrl" :alt="photo.fileName || 'Фото автомобиля'" /><div><small>{{ photo.fileName }}</small><button type="button" class="link-button danger-link" @click="deleteCarPhoto(photo)">Удалить</button></div></div><p v-if="!carPhotos.length" class="empty-state">Фотографии пока не добавлены.</p></div></section></div>
     <div v-if="toast" class="toast">{{ toast }}</div>
   </template>
     <div v-if="workOrderRegistryVisible" class="stub-overlay" @click.self="workOrderRegistryVisible = false"><section class="data-modal registry-modal"><button class="icon-button" aria-label="Закрыть" @click="workOrderRegistryVisible = false">×</button><p class="eyebrow">Реестр документов</p><h2>Заказ-наряды</h2><div class="registry-actions"><button class="button button-cloud dark-button" type="button" @click="downloadWorkOrderCsv" :disabled="!workOrderRegistry.length">Скачать CSV</button></div><div v-if="workOrderRegistryBusy" class="empty-state">Загружаем реестр…</div><div v-else-if="workOrderRegistryError" class="empty-state">{{ workOrderRegistryError }}</div><div v-else class="registry-table"><div class="registry-row registry-head"><span>№</span><span>Автомобиль</span><span>Заказчик</span><span>Дата</span><span>Статус</span><span>Итого</span><span>Документы</span></div><div v-for="item in workOrderRegistry" :key="item.id" class="registry-row"><span>{{ item.orderNumber || `#${item.id}` }}</span><span>{{ item.vehicleName || 'Без автомобиля' }}<small>{{ item.registrationNumber || '—' }}</small></span><span>{{ item.customer || '—' }}</span><span>{{ item.documentDate || '—' }}</span><span>{{ item.status }}</span><strong>{{ Number(item.total || 0).toFixed(2) }}</strong><span>{{ item.invoiceNumber || '—' }} · {{ item.actNumber || '—' }}</span></div><p v-if="!workOrderRegistry.length" class="empty-state">Заказ-нарядов пока нет.</p></div></section></div>
@@ -817,6 +858,15 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 .extended-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
 .extended-filters select { height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--soft); font-size: 11px; }
 .overdue-filter { display: flex; gap: 5px; align-items: center; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.photos-modal { width: min(960px, 100%); }
+.photo-upload-button, .new-car-photo-toolbar .button { display: inline-flex; position: relative; align-items: center; gap: 8px; }
+.photo-file-input { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; opacity: 0; }
+.car-photo-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.car-photo-card { overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+.car-photo-card img { display: block; width: 100%; height: 150px; object-fit: cover; background: #e7efec; }
+.car-photo-card > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 8px; }
+.car-photo-card small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.new-car-photo-toolbar { position: fixed; left: 24px; bottom: 24px; z-index: 21; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 11px; }
 .row-chevron { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; color: var(--muted); background: var(--soft); font-size: 20px; line-height: 1; }
 .insurance-pill { display: inline-block; padding: 7px 11px; border-radius: 999px; color: #3e4a47; background: #edf1f0; font-size: 11px; font-weight: 750; }
 .comment-input, .appointment-input, .shift-select { width: 100%; min-height: 34px; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; outline: 0; color: inherit; background: transparent; font-size: 11px; }
