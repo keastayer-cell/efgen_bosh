@@ -3,11 +3,13 @@ package com.efgenbosh.backend.controller;
 import com.efgenbosh.backend.domain.Insurer;
 import com.efgenbosh.backend.domain.Shift;
 import com.efgenbosh.backend.domain.Supplier;
+import com.efgenbosh.backend.dto.directory.WorkCatalogItemResponse;
 import com.efgenbosh.backend.dto.directory.DirectoryItemRequest;
 import com.efgenbosh.backend.dto.directory.DirectoryItemResponse;
 import com.efgenbosh.backend.repository.InsurerRepository;
 import com.efgenbosh.backend.repository.ShiftRepository;
 import com.efgenbosh.backend.repository.SupplierRepository;
+import com.efgenbosh.backend.repository.WorkCatalogItemRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -20,9 +22,11 @@ public class DirectoryController {
     private final InsurerRepository insurers;
     private final SupplierRepository suppliers;
     private final ShiftRepository shifts;
+    private final WorkCatalogItemRepository workCatalog;
 
-    public DirectoryController(InsurerRepository insurers, SupplierRepository suppliers, ShiftRepository shifts) {
-        this.insurers = insurers; this.suppliers = suppliers; this.shifts = shifts;
+    public DirectoryController(InsurerRepository insurers, SupplierRepository suppliers, ShiftRepository shifts,
+                               WorkCatalogItemRepository workCatalog) {
+        this.insurers = insurers; this.suppliers = suppliers; this.shifts = shifts; this.workCatalog = workCatalog;
     }
 
     @GetMapping("/insurers")
@@ -65,5 +69,13 @@ public class DirectoryController {
         Shift item = new Shift(); item.setName(request.name().trim());
         item = shifts.save(item);
         return new DirectoryItemResponse(item.getId(), item.getName());
+    }
+
+    @GetMapping("/works")
+    public List<WorkCatalogItemResponse> works() {
+        return workCatalog.findAllByActiveTrueOrderBySortOrderAscNameAsc().stream()
+            .map(item -> new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(),
+                item.getCategory().getName(), item.getDefaultUnit()))
+            .toList();
     }
 }
