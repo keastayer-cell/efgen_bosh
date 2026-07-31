@@ -12,7 +12,7 @@ public record WorkOrderResponse(
     List<WorkOrderLineResponse> lines, List<WorkOrderPartLineResponse> partLines, BigDecimal total
 ) {
     public static WorkOrderResponse from(WorkOrder order) {
-        return new WorkOrderResponse(order.getId(), order.getCar().getId(), order.getStatus(),
+        return new WorkOrderResponse(order.getId(), order.getCar() == null ? null : order.getCar().getId(), order.getStatus(),
             order.getDocumentDate(), order.getCustomer(), order.getOrderNumber(), order.getInvoiceNumber(), order.getActNumber(), order.getClaimNumber(),
             order.getVehicleName(), order.getRegistrationNumber(), order.getVin(),
             order.getLines().stream().map(WorkOrderLineResponse::from).toList(),

@@ -54,6 +54,31 @@ public class WorkOrderService {
         return WorkOrderResponse.from(orders.save(order));
     }
 
+    @Transactional
+    public WorkOrderResponse createStandalone(WorkOrderRequest request, Long userId) {
+        WorkOrder order = new WorkOrder();
+        order.setCreatedBy(userId); order.setClaimNumber(""); order.setVehicleName("");
+        order.setRegistrationNumber(""); order.setVin("");
+        applyRequest(order, request);
+        return WorkOrderResponse.from(orders.save(order));
+    }
+
+    @Transactional
+    public WorkOrderResponse findById(Long id) {
+        return WorkOrderResponse.from(orders.findById(id).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "Заказ-наряд не найден.")));
+    }
+
+    private void applyRequest(WorkOrder order, WorkOrderRequest request) {
+        if (request.documentDate() != null) order.setDocumentDate(request.documentDate());
+        order.setCustomer(value(request.customer())); order.setOrderNumber(value(request.orderNumber()));
+        order.setInvoiceNumber(value(request.invoiceNumber())); order.setActNumber(value(request.actNumber()));
+        if (request.status() != null && List.of("DRAFT", "READY", "CLOSED").contains(request.status().toUpperCase())) order.setStatus(request.status().toUpperCase());
+        order.replaceLines((request.lines() == null ? List.<WorkOrderLineRequest>of() : request.lines()).stream().map(this::line).toList());
+        order.replacePartLines((request.partLines() == null ? List.<WorkOrderPartLineRequest>of() : request.partLines()).stream().map(this::partLine).toList());
+        order.touch();
+    }
+
     private WorkOrder createDraft(Long carId, Long userId) {
         Car car = cars.findByIdWithParts(carId).orElseThrow(() ->
             new ResponseStatusException(HttpStatus.NOT_FOUND, "Автомобиль не найден."));

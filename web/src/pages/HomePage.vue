@@ -133,6 +133,22 @@ function applyVehicleAlias(id) {
 
 function applyContractor(id) { carForm.value.contractorId = id ? Number(id) : null }
 
+function printCarDocument(type) {
+  const target = document.querySelector('.data-modal')
+  const heading = target?.querySelector('h2')
+  const original = heading?.textContent
+  if (heading) heading.textContent = type === 'acceptance' ? 'Акт приёма автомобиля' : 'Акт выдачи автомобиля'
+  document.body.classList.add('printing-car-document')
+  window.setTimeout(() => window.print(), 0)
+  window.setTimeout(() => { if (heading && original) heading.textContent = original; document.body.classList.remove('printing-car-document') }, 1000)
+}
+
+function openStandaloneWorkOrder() {
+  selectedWorkOrderCar.value = { id: null, number: 'новый', vehicle: 'Без автомобиля', registration: '', parts: [] }
+  workOrder.value = { id: null, carId: null, status: 'DRAFT', documentDate: new Date().toISOString().slice(0, 10), customer: '', orderNumber: '', invoiceNumber: '', actNumber: '', lines: [], partLines: [] }
+  workOrderError.value = ''; workOrderVisible.value = true
+}
+
 function openCarForm() {
   modal.value = null
   editingCar.value = null
@@ -309,8 +325,9 @@ function workOrderTotal() {
 async function saveWorkOrder() {
   if (!selectedWorkOrderCar.value || !workOrder.value) return
   try {
-    const result = await requestJson(`/api/v1/cars/${selectedWorkOrderCar.value.id}/work-order`, {
-      method: 'PUT',
+    const standalone = !selectedWorkOrderCar.value.id
+    const result = await requestJson(standalone ? '/api/v1/work-orders/standalone' : `/api/v1/cars/${selectedWorkOrderCar.value.id}/work-order`, {
+      method: standalone ? 'POST' : 'PUT',
       body: JSON.stringify({
         documentDate: workOrder.value.documentDate,
         customer: workOrder.value.customer,
@@ -594,8 +611,9 @@ onMounted(() => {
     </main>
 
     <footer class="global-footer"><span>Efgen Bosh · рабочий интерфейс</span><span>Данные разделов подключаются поэтапно</span></footer>
+    <button type="button" class="standalone-order-button button button-primary" @click="openStandaloneWorkOrder">＋ Новый заказ-наряд</button>
 
-    <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
+    <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button" @click="printCarDocument('acceptance')">Акт приёма</button><button type="button" class="link-button" @click="printCarDocument('delivery')">Акт выдачи</button><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
     <div v-if="carFormVisible && vehicleAliases.length" class="vehicle-alias-toolbar"><span>Модель из справочника:</span><select @change="applyVehicleAlias($event.target.value)"><option value="">Выбрать модель</option><option v-for="item in vehicleAliases" :key="item.id" :value="item.id">{{ item.sourceName }}<template v-if="item.normalizedLatinName"> · {{ item.normalizedLatinName }}</template></option></select></div>
     <div v-if="carFormVisible && contractors.length" class="contractor-toolbar"><span>Исполнитель:</span><select :value="carForm.contractorId" @change="applyContractor($event.target.value)"><option value="">Не выбран</option><option v-for="item in contractors" :key="item.id" :value="item.id">{{ item.shortName }} · {{ item.code }}</option></select></div>
 
@@ -655,6 +673,7 @@ onMounted(() => {
 .vehicle-alias-toolbar select { height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); }
 .contractor-toolbar { position: fixed; left: 24px; bottom: 76px; z-index: 20; display: flex; gap: 10px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 12px; }
 .contractor-toolbar select { height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); }
+.standalone-order-button { position: fixed; right: 24px; top: 88px; z-index: 10; }
 .directory-modal { width: min(760px, 100%); }
 .directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }
 .directory-tabs button { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }
@@ -671,4 +690,8 @@ onMounted(() => {
 :global(body.printing-invoice .print-target h2::after) { content: 'Счёт на оплату'; font-size: 28px; }
 :global(body.printing-act .print-target h2::after) { content: 'Акт выполненных работ'; font-size: 28px; }
 :global(body.printing-document .document-toolbar) { display: none !important; }
+:global(body.printing-car-document *) { visibility: hidden !important; }
+:global(body.printing-car-document .data-modal), :global(body.printing-car-document .data-modal *) { visibility: visible !important; }
+:global(body.printing-car-document .data-modal) { position: absolute; inset: 0; width: 100%; max-height: none; margin: 0; padding: 30px; border-radius: 0; box-shadow: none; }
+:global(body.printing-car-document .modal-actions), :global(body.printing-car-document .icon-button), :global(body.printing-car-document .car-delete-toolbar) { display: none !important; }
 </style>
