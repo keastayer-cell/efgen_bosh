@@ -861,7 +861,13 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
         <div class="list-head case-list-head"><span>Автомобиль</span><span>Страховой случай</span><span>Страховая компания</span><span>Номер дела</span><span>Статус</span><span>Создан</span></div>
         <div class="cars-list"><article v-for="item in visibleRepairCases" :key="item.id" class="car-row case-row"><div class="cell"><strong>{{ item.vehicleMake }} {{ item.vehicleModel }}</strong><small>VIN {{ item.vin }}</small><small>{{ item.registrationNumber }} · {{ item.ownerName }} · {{ item.ownerPhone }}</small></div><div class="cell"><strong>Случай №{{ item.caseNumber }}</strong><small>Автомобиль №{{ item.accountingNumber }}</small></div><div class="cell"><span class="insurance-pill">{{ insurers.find((insurer) => insurer.id === item.insurerId)?.name || 'Страховая не указана' }}</span></div><div class="cell">{{ item.claimNumber || '—' }}</div><div class="cell"><span class="case-status">{{ item.status === 'CREATED' ? 'Создан' : item.status }}</span></div><div class="cell muted-cell">{{ item.createdAt ? item.createdAt.slice(0, 10) : '—' }}</div></article><p v-if="!visibleRepairCases.length" class="empty-state">Страховых случаев пока нет. Создайте первый через «＋ Ремонт».</p></div>
       </section>
-      <section v-if="activeSection === 'clients'" class="workspace">
+      <section v-if="activeSection === 'clients'" class="workspace clients-workspace">
+        <div class="toolbar"><label class="search-field"><span>⌕</span><input v-model="search" type="search" placeholder="Поиск по VIN, госномеру, ФИО или телефону" /></label><button class="button button-primary" type="button" @click="openCarForm">＋ Добавить автомобиль</button></div>
+        <div class="list-head clients-list-head"><span>Автомобиль</span><span>VIN</span><span>Госномер</span><span>Владелец</span><span>Телефон</span><span>Создан</span></div>
+        <div class="cars-list"><article v-for="car in displayedClientCars" :key="car.id" class="car-row client-row"><div class="cell"><button class="row-toggle" type="button" @click="openCarEdit(car)"><strong>{{ car.vehicle }}</strong><small>Автомобиль №{{ car.number }}</small></button></div><div class="cell client-vin">{{ car.vin }}</div><div class="cell">{{ car.registration }}</div><div class="cell">{{ car.ownerName || '—' }}</div><div class="cell">{{ car.ownerPhone || '—' }}</div><div class="cell muted-cell">{{ car.record }}</div></article><p v-if="!displayedClientCars.length" class="empty-state">Клиенты сервиса пока не созданы.</p></div>
+        <div v-if="visibleCars.length > carPageSize" class="pagination-toolbar" aria-label="Пагинация клиентов"><span>Найдено: {{ visibleCars.length }}</span><button type="button" class="link-button" :disabled="carPage === 0" @click="changeCarPage(carPage - 1)">← Назад</button><strong>Страница {{ carPage + 1 }} из {{ search.trim() ? carTotalPages : Math.ceil(visibleCars.length / carPageSize) }}</strong><button type="button" class="link-button" :disabled="carPage >= (search.trim() ? carTotalPages : Math.ceil(visibleCars.length / carPageSize)) - 1" @click="changeCarPage(carPage + 1)">Вперёд →</button></div>
+      </section>
+      <section v-if="false && activeSection === 'clients'" class="workspace">
         <div class="toolbar">
           <label class="search-field"><span>⌕</span><input v-model="search" type="search" placeholder="Поиск по марке, госномеру, VIN или телефону владельца" /></label>
           <div class="filters" role="group" aria-label="Фильтр автомобилей">
@@ -1079,6 +1085,9 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 .repair-vehicle-option { display: grid; gap: 4px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; text-align: left; color: var(--ink); background: #fbfdfc; cursor: pointer; }
 .repair-vehicle-option:hover { border-color: var(--accent); background: #effbf8; }
 .repair-vehicle-option span, .repair-vehicle-option small { color: var(--muted); font-size: 11px; }
+.clients-list-head { min-width: 1040px; grid-template-columns: 1.5fr 1.6fr 1fr 1.4fr 1.2fr .9fr; }
+.client-row { display: grid; grid-template-columns: 1.5fr 1.6fr 1fr 1.4fr 1.2fr .9fr; align-items: center; min-height: 86px; padding: 14px 21px; }
+.client-vin { color: var(--muted); font-family: Consolas, monospace; font-size: 11px; }
 .directory-list { display: grid; gap: 7px; max-height: 260px; overflow: auto; margin-top: 22px; }
 .directory-item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-size: 13px; }
 .directory-item small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
