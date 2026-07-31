@@ -47,6 +47,17 @@ public class DirectoryController {
         return new DirectoryItemResponse(item.getId(), item.getName());
     }
 
+    @PutMapping("/insurers/{id}")
+    public DirectoryItemResponse updateInsurer(@PathVariable Long id, @Valid @RequestBody DirectoryItemRequest request) {
+        Insurer item = insurers.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Страховая не найдена."));
+        item.setName(request.name().trim());
+        return new DirectoryItemResponse(item.getId(), insurers.save(item).getName());
+    }
+
+    @DeleteMapping("/insurers/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteInsurer(@PathVariable Long id) { insurers.findById(id).ifPresent(item -> { item.setActive(false); insurers.save(item); }); }
+
     @GetMapping("/suppliers")
     public List<DirectoryItemResponse> suppliers() {
         return suppliers.findAllByActiveTrueOrderBySortOrderAscNameAsc().stream()
@@ -61,6 +72,17 @@ public class DirectoryController {
         return new DirectoryItemResponse(item.getId(), item.getName());
     }
 
+    @PutMapping("/suppliers/{id}")
+    public DirectoryItemResponse updateSupplier(@PathVariable Long id, @Valid @RequestBody DirectoryItemRequest request) {
+        Supplier item = suppliers.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Поставщик не найден."));
+        item.setName(request.name().trim());
+        return new DirectoryItemResponse(item.getId(), suppliers.save(item).getName());
+    }
+
+    @DeleteMapping("/suppliers/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteSupplier(@PathVariable Long id) { suppliers.findById(id).ifPresent(item -> { item.setActive(false); suppliers.save(item); }); }
+
     @GetMapping("/shifts")
     public List<DirectoryItemResponse> shifts() {
         return shifts.findAllByActiveTrueOrderBySortOrderAscNameAsc().stream()
@@ -74,6 +96,17 @@ public class DirectoryController {
         item = shifts.save(item);
         return new DirectoryItemResponse(item.getId(), item.getName());
     }
+
+    @PutMapping("/shifts/{id}")
+    public DirectoryItemResponse updateShift(@PathVariable Long id, @Valid @RequestBody DirectoryItemRequest request) {
+        Shift item = shifts.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Смена не найдена."));
+        item.setName(request.name().trim());
+        return new DirectoryItemResponse(item.getId(), shifts.save(item).getName());
+    }
+
+    @DeleteMapping("/shifts/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteShift(@PathVariable Long id) { shifts.findById(id).ifPresent(item -> { item.setActive(false); shifts.save(item); }); }
 
     @GetMapping("/works")
     public List<WorkCatalogItemResponse> works() {
@@ -101,4 +134,8 @@ public class DirectoryController {
         return new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(),
             item.getCategory().getName(), item.getDefaultUnit());
     }
+
+    @DeleteMapping("/works/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteWork(@PathVariable Long id) { workCatalog.findById(id).ifPresent(item -> { item.setActive(false); workCatalog.save(item); }); }
 }

@@ -28,4 +28,5 @@ public class Counterparty {
     public String getNote() { return note; }
     public void setNote(String value) { note = value; }
     public boolean isActive() { return active; }
+    public void setActive(boolean value) { active = value; }
 }

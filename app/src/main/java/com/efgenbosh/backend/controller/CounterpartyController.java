@@ -30,5 +30,11 @@ public class CounterpartyController {
         return CounterpartyResponse.from(repository.save(item));
     }
 
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) {
+        repository.findById(id).ifPresent(item -> { item.setActive(false); repository.save(item); });
+    }
+
     private String value(String value) { return value == null ? "" : value.trim(); }
 }

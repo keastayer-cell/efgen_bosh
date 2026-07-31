@@ -22,5 +22,6 @@ public class WorkCatalogItem {
     public String getDefaultUnit() { return defaultUnit; }
     public void setDefaultUnit(String value) { defaultUnit = value; }
     public boolean isActive() { return active; }
+    public void setActive(boolean value) { active = value; }
     public Integer getSortOrder() { return sortOrder; }
 }
