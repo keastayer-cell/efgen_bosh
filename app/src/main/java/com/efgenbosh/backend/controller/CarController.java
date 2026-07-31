@@ -50,6 +50,11 @@ public class CarController {
         return service.setDelivered(id, delivered);
     }
 
+    @PatchMapping("/{id}/acceptance")
+    public CarResponse setAccepted(@PathVariable Long id, @RequestParam boolean accepted) {
+        return service.setAccepted(id, accepted);
+    }
+
     @PostMapping("/{carId}/parts")
     @ResponseStatus(HttpStatus.CREATED)
     public PartResponse addPart(@PathVariable Long carId, @Valid @RequestBody PartRequest request) {

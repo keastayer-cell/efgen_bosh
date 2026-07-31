@@ -63,6 +63,14 @@ public class CarService {
     }
 
     @Transactional
+    public CarResponse setAccepted(Long id, boolean accepted) {
+        Car car = car(id);
+        car.setAcceptedAt(accepted ? LocalDate.now() : null);
+        car.touch();
+        return response(car);
+    }
+
+    @Transactional
     public PartResponse addPart(Long carId, PartRequest request) {
         Car car = car(carId);
         Part part = new Part();

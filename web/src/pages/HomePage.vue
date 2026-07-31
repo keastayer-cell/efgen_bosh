@@ -368,6 +368,16 @@ async function toggleDelivered(car) {
   }
 }
 
+async function toggleAccepted(car) {
+  try {
+    await requestJson(`/api/v1/cars/${car.id}/acceptance?accepted=${!car.acceptedAt}`, { method: 'PATCH' })
+    await loadCars()
+    showToast(car.acceptedAt ? 'Приёмка отменена' : 'Автомобиль принят')
+  } catch (error) {
+    showToast(error.message)
+  }
+}
+
 async function togglePartReceived(car, part) {
   try {
     await requestJson(`/api/v1/cars/${car.id}/parts/${part.id}/receipt?received=${!part.received}`, { method: 'PATCH' })
@@ -487,7 +497,7 @@ onMounted(() => {
               <div class="cell muted-cell">{{ car.record }}</div><div class="cell">{{ car.shift }}</div>
               <div class="cell"><button v-if="car.status !== 'delivered'" class="link-button" @click="toggleDelivered(car)">Выдать</button><button v-else class="link-button" @click="toggleDelivered(car)">Отменить</button></div>
             </div>
-            <div class="row-actions"><button class="link-button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" @click="openWorkOrder(car)">Заказ-наряд</button><button class="link-button" @click="openPartForm(car)">＋ Запчасть</button><template v-for="part in car.parts" :key="part.id"><button class="link-button" @click="togglePartReceived(car, part)">{{ part.received ? `Отменить: ${part.name}` : `Поступила: ${part.name}` }}</button><button class="link-button" @click="openPartEdit(car, part)">Изменить: {{ part.name }}</button><button class="link-button danger-link" @click="deletePart(car, part)">Удалить</button></template></div>
+            <div class="row-actions"><button class="link-button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" @click="openWorkOrder(car)">Заказ-наряд</button><button class="link-button" @click="toggleAccepted(car)">{{ car.acceptedAt ? 'Отменить приёмку' : 'Принять автомобиль' }}</button><button class="link-button" @click="openPartForm(car)">＋ Запчасть</button><template v-for="part in car.parts" :key="part.id"><button class="link-button" @click="togglePartReceived(car, part)">{{ part.received ? `Отменить: ${part.name}` : `Поступила: ${part.name}` }}</button><button class="link-button" @click="openPartEdit(car, part)">Изменить: {{ part.name }}</button><button class="link-button danger-link" @click="deletePart(car, part)">Удалить</button></template></div>
           </article>
           <div v-if="!carsBusy && !carsError && !visibleCars.length" class="empty-state">По выбранному фильтру автомобили не найдены.</div>
         </div>
