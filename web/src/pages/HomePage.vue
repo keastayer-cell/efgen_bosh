@@ -12,6 +12,10 @@ const authMode = ref('login')
 const authError = ref('')
 const authBusy = ref(false)
 const activeFilter = ref('active')
+const insurerFilter = ref('')
+const shiftFilter = ref('')
+const contractorFilter = ref('')
+const overduePartsOnly = ref(false)
 const search = ref('')
 const cars = ref([])
 const insurers = ref([])
@@ -33,6 +37,10 @@ const toast = ref('')
 const carFormVisible = ref(false)
 const partFormVisible = ref(false)
 const workOrderVisible = ref(false)
+const workOrderRegistryVisible = ref(false)
+const workOrderRegistry = ref([])
+const workOrderRegistryBusy = ref(false)
+const workOrderRegistryError = ref('')
 const directoriesVisible = ref(false)
 const contractorVisible = ref(false)
 const editingContractor = ref(null)
@@ -77,6 +85,7 @@ const mappedCars = computed(() => cars.value.map((car) => ({
   insurer: insurers.value.find((item) => item.id === car.insurerId)?.name || (car.insurerId ? `Страховая #${car.insurerId}` : 'Страховая не выбрана'),
   start: car.startedAt || car.acceptedAt || '—',
   parts: car.parts.length ? `${car.parts.filter((part) => part.received).length} / ${car.parts.length}` : '—',
+  partsList: car.parts,
   comment: car.comment || '—',
   record: car.appointmentDate || '—',
   shift: shifts.value.find((item) => item.id === car.shiftId)?.name || (car.shiftId ? `Смена #${car.shiftId}` : '—'),
@@ -87,8 +96,12 @@ const visibleCars = computed(() => mappedCars.value.filter((car) => {
   const matchesFilter = activeFilter.value === 'active'
     ? car.status !== 'delivered'
     : activeFilter.value === car.status
+  const matchesInsurer = !insurerFilter.value || String(car.insurerId || '') === insurerFilter.value
+  const matchesShift = !shiftFilter.value || String(car.shiftId || '') === shiftFilter.value
+  const matchesContractor = !contractorFilter.value || String(car.contractorId || '') === contractorFilter.value
+  const matchesOverdue = !overduePartsOnly.value || car.partsList?.some((part) => !part.received && part.expectedDate && part.expectedDate < new Date().toISOString().slice(0, 10))
   const query = search.value.trim().toLowerCase()
-  return matchesFilter && (!query || Object.values(car).some((value) => String(value).toLowerCase().includes(query)))
+  return matchesFilter && matchesInsurer && matchesShift && matchesContractor && matchesOverdue && (!query || Object.values(car).some((value) => String(value).toLowerCase().includes(query)))
 }))
 
 const stats = computed(() => ({
@@ -146,6 +159,20 @@ async function loadDirectories() {
   } catch (error) {
     showToast(`Справочники не загружены: ${error.message}`)
   }
+}
+
+async function openWorkOrderRegistry() {
+  workOrderRegistryVisible.value = true
+  workOrderRegistryBusy.value = true
+  workOrderRegistryError.value = ''
+  try { workOrderRegistry.value = await requestJson('/api/v1/work-orders') } catch (error) { workOrderRegistryError.value = error.message } finally { workOrderRegistryBusy.value = false }
+}
+
+function downloadWorkOrderCsv() {
+  const header = ['ID', 'Заказ-наряд', 'Статус', 'Дата', 'Заказчик', 'Автомобиль', 'Госномер', 'Итого', 'Счёт', 'Акт']
+  const rows = workOrderRegistry.value.map((item) => [item.id, item.orderNumber, item.status, item.documentDate, item.customer, item.vehicleName, item.registrationNumber, item.total, item.invoiceNumber, item.actNumber])
+  const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(';')).join('\n')
+  const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' })); link.download = 'реестр-заказ-нарядов.csv'; link.click(); URL.revokeObjectURL(link.href)
 }
 
 function applyVehicleAlias(id) {
@@ -625,7 +652,7 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
       <div class="brand"><span class="brand-mark">B</span><span><strong>Bosh: кузовной ремонт</strong><small>Автомобили и запчасти</small></span></div>
       <div class="topbar-actions">
         <button class="button button-cloud" @click="openStub('Облачное хранилище')">☁ Облако</button>
-        <button class="button button-cloud" @click="openStub('Заказ-наряд')">Заказ-наряд</button>
+        <button class="button button-cloud" @click="openWorkOrderRegistry">Заказ-наряды</button>
         <button class="button button-cloud" @click="openStub('Настройки')">Настройки</button>
         <button class="button button-primary" @click="openCarForm">＋ Добавить автомобиль</button>
         <button class="user-chip" title="Выйти" @click="logout">{{ user?.name || user?.email || 'Пользователь' }} · Выйти</button>
@@ -645,6 +672,12 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
           <label class="search-field"><span>⌕</span><input v-model="search" type="search" placeholder="Поиск по автомобилю, номеру, детали или артикулу" /></label>
           <div class="filters" role="group" aria-label="Фильтр автомобилей">
             <button v-for="filter in [['active','В работе'], ['waiting','Ждём детали'], ['ready','Всё поступило'], ['delivered','Выданы']]" :key="filter[0]" class="filter" :class="{ 'is-active': activeFilter === filter[0] }" @click="activeFilter = filter[0]">{{ filter[1] }}</button>
+          </div>
+          <div class="extended-filters">
+            <select v-model="insurerFilter" aria-label="Фильтр по страховой"><option value="">Все страховые</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select>
+            <select v-model="shiftFilter" aria-label="Фильтр по смене"><option value="">Все смены</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select>
+            <select v-model="contractorFilter" aria-label="Фильтр по исполнителю"><option value="">Все исполнители</option><option v-for="item in contractors" :key="item.id" :value="String(item.id)">{{ item.shortName }}</option></select>
+            <label class="overdue-filter"><input v-model="overduePartsOnly" type="checkbox" /> Просроченные детали</label>
           </div>
         </div>
         <div class="list-head"><span>Автомобиль</span><span>Страховая / Начало</span><span>Запчасти</span><span>Комментарий</span><span>Документы</span><span>Запись</span><span>Смена</span><span>Выдача</span></div>
@@ -702,6 +735,7 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
     <div v-if="modal" class="stub-overlay" @click.self="modal = null"><section class="stub-modal"><button class="icon-button" aria-label="Закрыть" @click="modal = null">×</button><p class="eyebrow">Заглушка раздела</p><h2>{{ modal }}</h2><p>Внешний вид и место действия уже подготовлены. Реальная загрузка и сохранение данных будут подключены к backend следующим этапом.</p><button class="button button-primary" @click="modal = null">Понятно</button></section></div>
     <div v-if="toast" class="toast">{{ toast }}</div>
   </template>
+    <div v-if="workOrderRegistryVisible" class="stub-overlay" @click.self="workOrderRegistryVisible = false"><section class="data-modal registry-modal"><button class="icon-button" aria-label="Закрыть" @click="workOrderRegistryVisible = false">×</button><p class="eyebrow">Реестр документов</p><h2>Заказ-наряды</h2><div class="registry-actions"><button class="button button-cloud dark-button" type="button" @click="downloadWorkOrderCsv" :disabled="!workOrderRegistry.length">Скачать CSV</button></div><div v-if="workOrderRegistryBusy" class="empty-state">Загружаем реестр…</div><div v-else-if="workOrderRegistryError" class="empty-state">{{ workOrderRegistryError }}</div><div v-else class="registry-table"><div class="registry-row registry-head"><span>№</span><span>Автомобиль</span><span>Заказчик</span><span>Дата</span><span>Статус</span><span>Итого</span><span>Документы</span></div><div v-for="item in workOrderRegistry" :key="item.id" class="registry-row"><span>{{ item.orderNumber || `#${item.id}` }}</span><span>{{ item.vehicleName || 'Без автомобиля' }}<small>{{ item.registrationNumber || '—' }}</small></span><span>{{ item.customer || '—' }}</span><span>{{ item.documentDate || '—' }}</span><span>{{ item.status }}</span><strong>{{ Number(item.total || 0).toFixed(2) }}</strong><span>{{ item.invoiceNumber || '—' }} · {{ item.actNumber || '—' }}</span></div><p v-if="!workOrderRegistry.length" class="empty-state">Заказ-нарядов пока нет.</p></div></section></div>
 </template>
 
 <style scoped>
@@ -709,6 +743,12 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 .auth-tabs button { flex: 1; padding: 9px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }
 .auth-tabs button.is-active { color: var(--brand); background: white; box-shadow: 0 2px 8px rgb(24 52 47 / 10%); }
 .data-modal { position: relative; width: min(720px, 100%); max-height: 90vh; overflow: auto; padding: 34px; border-radius: 18px; background: white; box-shadow: 0 25px 90px rgb(8 43 37 / 27%); }
+.registry-modal { width: min(1180px, 100%); }
+.registry-actions { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.registry-table { overflow: auto; }
+.registry-row { display: grid; grid-template-columns: .55fr 1.5fr 1.4fr .8fr .7fr .9fr 1.2fr; gap: 10px; align-items: center; min-width: 900px; padding: 10px 8px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.registry-row small { display: block; margin-top: 3px; color: var(--muted); }
+.registry-head { color: var(--muted); font-size: 11px; font-weight: 750; }
 .compact-modal { width: min(560px, 100%); }
 .data-modal h2 { margin: 0 0 18px; }
 .modal-subtitle { margin: -8px 0 18px; color: var(--muted); font-size: 13px; }
@@ -756,6 +796,9 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 .directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }
 .directory-tabs button { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }
 .directory-tabs button.is-active { color: var(--brand); border-bottom-color: var(--accent); }
+.extended-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
+.extended-filters select { height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--soft); font-size: 11px; }
+.overdue-filter { display: flex; gap: 5px; align-items: center; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .directory-list { display: grid; gap: 7px; max-height: 260px; overflow: auto; margin-top: 22px; }
 .directory-item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-size: 13px; }
 .directory-item small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
