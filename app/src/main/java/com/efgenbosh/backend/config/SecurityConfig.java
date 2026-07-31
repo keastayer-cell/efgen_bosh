@@ -7,6 +7,7 @@ import com.efgenbosh.backend.security.JwtAuthenticationFilter;
 import com.efgenbosh.backend.security.PasswordChangeRequiredFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -15,6 +16,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 
 @Configuration
 @EnableMethodSecurity
@@ -34,7 +36,12 @@ public class SecurityConfig {
         JsonAuthEntryPoint jsonAuthEntryPoint,
         JsonAccessDeniedHandler jsonAccessDeniedHandler
     ) throws Exception {
+        CookieCsrfTokenRepository csrfRepository =
+            CookieCsrfTokenRepository.withHttpOnlyFalse();
+        csrfRepository.setCookiePath("/");
+
         return http
+            .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository))
             .httpBasic(AbstractHttpConfigurer::disable)
             .formLogin(AbstractHttpConfigurer::disable)
             .cors(Customizer.withDefaults())
@@ -42,6 +49,14 @@ public class SecurityConfig {
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authorizeHttpRequests(authorize -> authorize
+                .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
+                .requestMatchers(
+                    HttpMethod.POST,
+                    "/api/auth/register",
+                    "/api/auth/login",
+                    "/api/auth/refresh",
+                    "/api/auth/logout"
+                ).permitAll()
                 .requestMatchers("/api/health", "/actuator/health").permitAll()
                 .anyRequest().authenticated()
             )

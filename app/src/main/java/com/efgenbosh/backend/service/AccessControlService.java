@@ -30,6 +30,11 @@ public class AccessControlService {
     }
 
     @Transactional
+    public void assignDefaultUserRole(Long userId) {
+        ensureRole(userId, RoleCode.VIEWER, null);
+    }
+
+    @Transactional
     public boolean ensureRole(Long userId, RoleCode roleCode, Long grantedByUserId) {
         if (userRoleRepository.existsByUser_IdAndRole_CodeAndActiveTrue(userId, roleCode)) {
             return false;
