@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: efgen-bosh-app
+  datasource:
+    url: ${BOSH_DB_URL:jdbc:postgresql://127.0.0.1:5434/efgen_bosh}
+    username: ${BOSH_DB_USER:efgen_bosh}
+    password: ${BOSH_DB_PASSWORD}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+server:
+  port: ${APP_PORT:8080}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true

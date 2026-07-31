@@ -1,0 +1,14 @@
+[Unit]
+Description=Efgen Bosh application (%i)
+After=network-online.target postgresql.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/efgen-bosh/%i/app.env
+ExecStart=/usr/bin/java -jar /opt/efgen-bosh/%i/app.jar
+Restart=on-failure
+RestartSec=5
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

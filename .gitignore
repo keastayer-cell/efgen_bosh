@@ -1,0 +1,20 @@
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+.env
+.env.*
+!.env.example
+
+app/target/
+# Temporary build output left from the pre-convention `backend/` scaffold.
+backend/target/
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+
+tmp/
+logs/
+backups/
