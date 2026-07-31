@@ -1,0 +1,4 @@
+ALTER TABLE work.w_work_order
+  ADD COLUMN order_number VARCHAR(64) NOT NULL DEFAULT '',
+  ADD COLUMN invoice_number VARCHAR(64) NOT NULL DEFAULT '',
+  ADD COLUMN act_number VARCHAR(64) NOT NULL DEFAULT '';

@@ -15,6 +15,9 @@ public class WorkOrder {
     @Column(nullable = false, length = 32) private String status = "DRAFT";
     @Column(name = "document_date", nullable = false) private LocalDate documentDate = LocalDate.now();
     @Column(nullable = false, length = 500) private String customer = "";
+    @Column(name = "order_number", nullable = false, length = 64) private String orderNumber = "";
+    @Column(name = "invoice_number", nullable = false, length = 64) private String invoiceNumber = "";
+    @Column(name = "act_number", nullable = false, length = 64) private String actNumber = "";
     @Column(name = "claim_number", nullable = false, length = 120) private String claimNumber = "";
     @Column(name = "vehicle_name", nullable = false) private String vehicleName = "";
     @Column(name = "registration_number", nullable = false, length = 32) private String registrationNumber = "";
@@ -37,6 +40,12 @@ public class WorkOrder {
     public void setDocumentDate(LocalDate value) { documentDate = value; }
     public String getCustomer() { return customer; }
     public void setCustomer(String value) { customer = value; }
+    public String getOrderNumber() { return orderNumber; }
+    public void setOrderNumber(String value) { orderNumber = value; }
+    public String getInvoiceNumber() { return invoiceNumber; }
+    public void setInvoiceNumber(String value) { invoiceNumber = value; }
+    public String getActNumber() { return actNumber; }
+    public void setActNumber(String value) { actNumber = value; }
     public String getClaimNumber() { return claimNumber; }
     public void setClaimNumber(String value) { claimNumber = value; }
     public String getVehicleName() { return vehicleName; }

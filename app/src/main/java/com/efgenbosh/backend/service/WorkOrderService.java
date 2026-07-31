@@ -40,6 +40,9 @@ public class WorkOrderService {
         WorkOrder order = orders.findByCarId(carId).orElseGet(() -> createDraft(carId, userId));
         if (request.documentDate() != null) order.setDocumentDate(request.documentDate());
         order.setCustomer(value(request.customer()));
+        order.setOrderNumber(value(request.orderNumber()));
+        order.setInvoiceNumber(value(request.invoiceNumber()));
+        order.setActNumber(value(request.actNumber()));
         if (request.status() != null && List.of("DRAFT", "READY", "CLOSED").contains(request.status().toUpperCase())) {
             order.setStatus(request.status().toUpperCase());
         }
