@@ -30,6 +30,14 @@ public class CounterpartyController {
         return CounterpartyResponse.from(repository.save(item));
     }
 
+    @PutMapping("/{id}")
+    public CounterpartyResponse update(@PathVariable Long id, @Valid @RequestBody CounterpartyRequest request) {
+        Counterparty item = repository.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Контрагент не найден."));
+        item.setName(request.name().trim()); item.setInn(value(request.inn())); item.setAddress(value(request.address()));
+        item.setPhone(value(request.phone())); item.setNote(value(request.note()));
+        return CounterpartyResponse.from(repository.save(item));
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

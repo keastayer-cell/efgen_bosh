@@ -132,10 +132,22 @@ public class DirectoryController {
         item.setDefaultUnit(request.defaultUnit().trim());
         item = workCatalog.save(item);
         return new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(),
-            item.getCategory().getName(), item.getDefaultUnit());
+            categoryName, item.getDefaultUnit());
     }
 
     @DeleteMapping("/works/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteWork(@PathVariable Long id) { workCatalog.findById(id).ifPresent(item -> { item.setActive(false); workCatalog.save(item); }); }
+
+    @PutMapping("/works/{id}")
+    public WorkCatalogItemResponse updateWork(@PathVariable Long id, @Valid @RequestBody WorkCatalogItemRequest request) {
+        var item = workCatalog.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Работа не найдена."));
+        String categoryName = request.categoryName().trim();
+        var category = workCategories.findByNameIgnoreCase(categoryName).orElseGet(() -> {
+            var created = new com.efgenbosh.backend.domain.WorkCategory(); created.setName(categoryName); return workCategories.save(created);
+        });
+        item.setCategory(category); item.setCode(request.code().trim()); item.setName(request.name().trim()); item.setDefaultUnit(request.defaultUnit().trim());
+        item = workCatalog.save(item);
+        return new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(), categoryName, item.getDefaultUnit());
+    }
 }
