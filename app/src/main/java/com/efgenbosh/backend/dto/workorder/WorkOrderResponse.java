@@ -1,0 +1,19 @@
+package com.efgenbosh.backend.dto.workorder;
+
+import com.efgenbosh.backend.domain.WorkOrder;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+
+public record WorkOrderResponse(
+    Long id, Long carId, String status, LocalDate documentDate, String customer,
+    String claimNumber, String vehicleName, String registrationNumber, String vin,
+    List<WorkOrderLineResponse> lines, BigDecimal total
+) {
+    public static WorkOrderResponse from(WorkOrder order) {
+        return new WorkOrderResponse(order.getId(), order.getCar().getId(), order.getStatus(),
+            order.getDocumentDate(), order.getCustomer(), order.getClaimNumber(),
+            order.getVehicleName(), order.getRegistrationNumber(), order.getVin(),
+            order.getLines().stream().map(WorkOrderLineResponse::from).toList(), order.total());
+    }
+}
