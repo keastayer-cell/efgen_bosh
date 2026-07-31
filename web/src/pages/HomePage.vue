@@ -20,6 +20,7 @@ const shifts = ref([])
 const workCatalog = ref([])
 const counterparties = ref([])
 const vehicleAliases = ref([])
+const contractors = ref([])
 const carsBusy = ref(false)
 const carsError = ref('')
 const modal = ref(null)
@@ -51,7 +52,7 @@ function emptyCarForm() {
   return {
     vehicleName: '', vehicleNameLatin: '', registrationNumber: '', vin: '',
     insuredPerson: '', claimNumber: '', acceptedAt: '', startedAt: '',
-    appointmentDate: '', comment: '', documentFolderUrl: '', insurerId: '', shiftId: '',
+    appointmentDate: '', comment: '', documentFolderUrl: '', insurerId: '', shiftId: '', contractorId: '',
   }
 }
 
@@ -102,13 +103,14 @@ async function loadCars() {
 
 async function loadDirectories() {
   try {
-    const [insurerItems, supplierItems, shiftItems, workItems, counterpartyItems, vehicleItems] = await Promise.all([
+    const [insurerItems, supplierItems, shiftItems, workItems, counterpartyItems, vehicleItems, contractorItems] = await Promise.all([
       requestJson('/api/v1/directories/insurers'),
       requestJson('/api/v1/directories/suppliers'),
       requestJson('/api/v1/directories/shifts'),
       requestJson('/api/v1/directories/works'),
       requestJson('/api/v1/counterparties'),
       requestJson('/api/v1/directories/vehicles'),
+      requestJson('/api/v1/contractors'),
     ])
     insurers.value = insurerItems
     suppliers.value = supplierItems
@@ -116,6 +118,7 @@ async function loadDirectories() {
     workCatalog.value = workItems
     counterparties.value = counterpartyItems
     vehicleAliases.value = vehicleItems
+    contractors.value = contractorItems
   } catch (error) {
     showToast(`Справочники не загружены: ${error.message}`)
   }
@@ -127,6 +130,8 @@ function applyVehicleAlias(id) {
   carForm.value.vehicleName = item.sourceName
   carForm.value.vehicleNameLatin = item.normalizedLatinName
 }
+
+function applyContractor(id) { carForm.value.contractorId = id ? Number(id) : null }
 
 function openCarForm() {
   modal.value = null
@@ -206,6 +211,7 @@ function openCarEdit(car) {
     documentFolderUrl: source.documentFolderUrl || '',
     insurerId: source.insurerId ? String(source.insurerId) : '',
     shiftId: source.shiftId ? String(source.shiftId) : '',
+    contractorId: source.contractorId ? String(source.contractorId) : '',
   }
   carFormVisible.value = true
 }
@@ -376,7 +382,7 @@ async function saveCar() {
       ...carForm.value,
       insurerId: carForm.value.insurerId ? Number(carForm.value.insurerId) : null,
       shiftId: carForm.value.shiftId ? Number(carForm.value.shiftId) : null,
-      contractorId: null,
+      contractorId: carForm.value.contractorId ? Number(carForm.value.contractorId) : null,
     }
     await requestJson(path, {
       method: editingCar.value ? 'PUT' : 'POST',
@@ -591,6 +597,7 @@ onMounted(() => {
 
     <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
     <div v-if="carFormVisible && vehicleAliases.length" class="vehicle-alias-toolbar"><span>Модель из справочника:</span><select @change="applyVehicleAlias($event.target.value)"><option value="">Выбрать модель</option><option v-for="item in vehicleAliases" :key="item.id" :value="item.id">{{ item.sourceName }}<template v-if="item.normalizedLatinName"> · {{ item.normalizedLatinName }}</template></option></select></div>
+    <div v-if="carFormVisible && contractors.length" class="contractor-toolbar"><span>Исполнитель:</span><select :value="carForm.contractorId" @change="applyContractor($event.target.value)"><option value="">Не выбран</option><option v-for="item in contractors" :key="item.id" :value="item.id">{{ item.shortName }} · {{ item.code }}</option></select></div>
 
     <div v-if="workOrderVisible && workOrder" class="document-toolbar"><span>Номера документов:</span><input v-model="workOrder.orderNumber" placeholder="Заказ-наряд №" /><input v-model="workOrder.invoiceNumber" placeholder="Счёт №" /><input v-model="workOrder.actNumber" placeholder="Акт №" /><span>Печать:</span><button type="button" class="link-button" @click="printDocument('order')">Заказ-наряд</button><button type="button" class="link-button" @click="printDocument('invoice')">Счёт</button><button type="button" class="link-button" @click="printDocument('act')">Акт</button></div>
 
@@ -646,6 +653,8 @@ onMounted(() => {
 .car-delete-toolbar { position: fixed; right: 24px; bottom: 24px; z-index: 20; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border: 1px solid #ead1d1; border-radius: 10px; background: #fff7f7; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); font-size: 12px; }
 .vehicle-alias-toolbar { position: fixed; left: 24px; bottom: 24px; z-index: 20; display: flex; gap: 10px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 12px; }
 .vehicle-alias-toolbar select { height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); }
+.contractor-toolbar { position: fixed; left: 24px; bottom: 76px; z-index: 20; display: flex; gap: 10px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 12px; }
+.contractor-toolbar select { height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); }
 .directory-modal { width: min(760px, 100%); }
 .directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }
 .directory-tabs button { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }
