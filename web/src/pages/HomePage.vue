@@ -18,6 +18,9 @@ const contractorFilter = ref('')
 const overduePartsOnly = ref(false)
 const search = ref('')
 const cars = ref([])
+const activeSection = ref('cases')
+const repairRegistry = ref([])
+const caseSearch = ref('')
 const insurers = ref([])
 const suppliers = ref([])
 const shifts = ref([])
@@ -44,12 +47,15 @@ const repairCases = ref([])
 const repairCasesVisible = ref(false)
 const repairMenuVisible = ref(false)
 const insuranceVehiclePickerVisible = ref(false)
+const insuranceCaseCreateVisible = ref(false)
 const repairVinSearch = ref('')
 const repairVehicleCandidates = ref([])
 const repairCasesBusy = ref(false)
 const repairCaseCar = ref(null)
 const editingRepairCase = ref(null)
 const repairCaseForm = ref({ caseNumber: '', status: 'OPEN', insuredPerson: '', claimNumber: '', insurerId: '', contractorId: '', shiftId: '', acceptedAt: '' })
+const repairCasePhotos = ref([])
+const newInsuranceCaseForm = ref({ caseNumber: '', insurerId: '', claimNumber: '' })
 const modal = ref(null)
 const toast = ref('')
 const carFormVisible = ref(false)
@@ -156,6 +162,15 @@ async function loadCars() {
     carsBusy.value = false
   }
 }
+
+async function loadRepairRegistry() {
+  try { repairRegistry.value = await requestJson('/api/v1/repair-cases') } catch (error) { showToast(`Страховые случаи не загружены: ${error.message}`) }
+}
+
+const visibleRepairCases = computed(() => {
+  const query = caseSearch.value.trim().toLowerCase()
+  return repairRegistry.value.filter((item) => !query || [item.vin, item.registrationNumber, item.caseNumber, item.claimNumber, item.ownerName].some((value) => String(value || '').toLowerCase().includes(query)))
+})
 
 function changeCarPage(page) {
   carPage.value = Math.max(0, Math.min(page, Math.max(0, carTotalPages.value - 1)))
@@ -287,18 +302,29 @@ function searchRepairVehicle() {
 }
 async function chooseRepairVehicle(car) {
   insuranceVehiclePickerVisible.value = false
-  await openRepairCases(car)
-  startRepairCase()
+  repairCaseCar.value = car
+  newInsuranceCaseForm.value = { caseNumber: '', insurerId: '', claimNumber: '' }
+  repairCasePhotos.value = []
+  insuranceCaseCreateVisible.value = true
+}
+
+async function saveNewInsuranceCase() {
+  if (!newInsuranceCaseForm.value.caseNumber.trim() || !newInsuranceCaseForm.value.claimNumber.trim() || !newInsuranceCaseForm.value.insurerId || !repairCasePhotos.value.length) { showToast('Заполните оба номера, выберите страховую и добавьте фото'); return }
+  try { const saved = await requestJson(`/api/v1/cars/${repairCaseCar.value.id}/repair-cases`, { method: 'POST', body: JSON.stringify({ caseNumber: newInsuranceCaseForm.value.caseNumber, claimNumber: newInsuranceCaseForm.value.claimNumber, insurerId: Number(newInsuranceCaseForm.value.insurerId), contractorId: null, shiftId: null, insuredPerson: '' }) }); for (const photo of repairCasePhotos.value) await requestJson(`/api/v1/cars/${repairCaseCar.value.id}/repair-cases/${saved.id}/photos`, { method: 'POST', body: JSON.stringify(photo) }); insuranceCaseCreateVisible.value = false; await loadRepairRegistry(); showToast('Страховой случай создан') } catch (error) { showToast(error.message) }
 }
 
 function startRepairCase(caseItem = null) {
   editingRepairCase.value = caseItem
-  repairCaseForm.value = caseItem ? { caseNumber: caseItem.caseNumber, status: caseItem.status, insuredPerson: caseItem.insuredPerson || '', claimNumber: caseItem.claimNumber || '', insurerId: caseItem.insurerId ? String(caseItem.insurerId) : '', contractorId: caseItem.contractorId ? String(caseItem.contractorId) : '', shiftId: caseItem.shiftId ? String(caseItem.shiftId) : '', acceptedAt: caseItem.acceptedAt || '' } : { caseNumber: String(repairCases.value.length + 1), status: 'OPEN', insuredPerson: '', claimNumber: '', insurerId: '', contractorId: '', shiftId: '', acceptedAt: '' }
+  repairCasePhotos.value = []
+  repairCaseForm.value = caseItem ? { caseNumber: caseItem.caseNumber, status: caseItem.status, insuredPerson: caseItem.insuredPerson || '', claimNumber: caseItem.claimNumber || '', insurerId: caseItem.insurerId ? String(caseItem.insurerId) : '', contractorId: '', shiftId: '', acceptedAt: caseItem.acceptedAt || '' } : { caseNumber: '', status: 'CREATED', insuredPerson: '', claimNumber: '', insurerId: '', contractorId: '', shiftId: '', acceptedAt: '' }
 }
 
 async function saveRepairCase() {
-  try { const path = editingRepairCase.value ? `/api/v1/cars/${repairCaseCar.value.id}/repair-cases/${editingRepairCase.value.id}` : `/api/v1/cars/${repairCaseCar.value.id}/repair-cases`; await requestJson(path, { method: editingRepairCase.value ? 'PUT' : 'POST', body: JSON.stringify({ ...repairCaseForm.value, insurerId: repairCaseForm.value.insurerId ? Number(repairCaseForm.value.insurerId) : null, contractorId: repairCaseForm.value.contractorId ? Number(repairCaseForm.value.contractorId) : null, shiftId: repairCaseForm.value.shiftId ? Number(repairCaseForm.value.shiftId) : null }) }); repairCases.value = await requestJson(`/api/v1/cars/${repairCaseCar.value.id}/repair-cases`); editingRepairCase.value = null; showToast('Страховой случай сохранён') } catch (error) { showToast(error.message) }
+  if (!editingRepairCase.value && !repairCasePhotos.value.length) { showToast('Добавьте хотя бы одно фото автомобиля'); return }
+  try { const path = editingRepairCase.value ? `/api/v1/cars/${repairCaseCar.value.id}/repair-cases/${editingRepairCase.value.id}` : `/api/v1/cars/${repairCaseCar.value.id}/repair-cases`; const saved = await requestJson(path, { method: editingRepairCase.value ? 'PUT' : 'POST', body: JSON.stringify({ caseNumber: repairCaseForm.value.caseNumber, insuredPerson: repairCaseForm.value.insuredPerson, claimNumber: repairCaseForm.value.claimNumber, insurerId: repairCaseForm.value.insurerId ? Number(repairCaseForm.value.insurerId) : null, contractorId: null, shiftId: null, acceptedAt: repairCaseForm.value.acceptedAt || null }) }); if (!editingRepairCase.value) { for (const photo of repairCasePhotos.value) await requestJson(`/api/v1/cars/${repairCaseCar.value.id}/repair-cases/${saved.id}/photos`, { method: 'POST', body: JSON.stringify(photo) }) } repairCases.value = await requestJson(`/api/v1/cars/${repairCaseCar.value.id}/repair-cases`); await loadRepairRegistry(); editingRepairCase.value = null; repairCasePhotos.value = []; showToast('Страховой случай создан') } catch (error) { showToast(error.message) }
 }
+
+function readRepairCasePhotos(event) { const files = Array.from(event.target.files || []).slice(0, 20); Promise.all(files.map((file) => new Promise((resolve, reject) => { if (!file.type.startsWith('image/') || file.size > 8 * 1024 * 1024) { reject(new Error('Фото должно быть изображением до 8 МБ')); return } const reader = new FileReader(); reader.onload = () => resolve({ fileName: file.name, mimeType: file.type, dataUrl: reader.result }); reader.onerror = reject; reader.readAsDataURL(file) }))).then((photos) => { repairCasePhotos.value = photos }).catch((error) => showToast(error.message)); event.target.value = '' }
 
 async function deleteRepairCase(item) {
   if (!window.confirm(`Удалить страховой случай №${item.caseNumber}?`)) return
@@ -732,7 +758,7 @@ async function submitLogin() {
     localStorage.setItem(userKey, JSON.stringify(result))
     token.value = result.token
     user.value = result
-    await Promise.all([loadCars(), loadDirectories()])
+    await Promise.all([loadCars(), loadDirectories(), loadRepairRegistry()])
   } catch (error) {
     authError.value = error.message
   } finally {
@@ -778,6 +804,7 @@ onMounted(() => {
   if (token.value) {
     loadCars()
     loadDirectories()
+    loadRepairRegistry()
   }
 })
 
@@ -807,7 +834,8 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
     <header class="topbar">
       <div class="brand"><span class="brand-mark">B</span><span><strong>Bosh: кузовной ремонт</strong><small>Автомобили и запчасти</small></span></div>
       <div class="topbar-actions">
-        <button class="button button-cloud" type="button" @click="activeFilter = 'all'; window.scrollTo({ top: 0, behavior: 'smooth' })">Клиенты сервиса</button>
+        <button class="button button-cloud" type="button" @click="activeSection = 'cases'">Страховые случаи</button>
+        <button class="button button-cloud" type="button" @click="activeSection = 'clients'">Клиенты сервиса</button>
         <button class="button button-primary" type="button" @click="openRepairMenu">＋ Ремонт</button>
         <button class="button button-cloud" @click="openStub('Облачное хранилище')">☁ Облако</button>
         <button class="button button-cloud" @click="openWorkOrderRegistry">Заказ-наряды</button>
@@ -818,14 +846,19 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
     </header>
 
     <main class="page-shell">
-      <section class="stats-grid" aria-label="Сводка">
+      <section v-if="activeSection === 'clients'" class="stats-grid" aria-label="Сводка">
         <article class="stat-card stat-card-main"><span class="stat-icon">А</span><div><small>Автомобилей в работе</small><strong>{{ stats.active }}</strong></div></article>
         <article class="stat-card"><span class="stat-icon stat-icon-amber">!</span><div><small>Ждём запчасти</small><strong>{{ stats.waiting }}</strong></div></article>
         <article class="stat-card"><span class="stat-icon stat-icon-green">✓</span><div><small>Все детали поступили</small><strong>{{ stats.ready }}</strong></div></article>
         <article class="stat-card"><span class="stat-icon stat-icon-gray">В</span><div><small>Автомобилей выдано</small><strong>{{ stats.delivered }}</strong></div></article>
       </section>
 
-      <section class="workspace">
+      <section v-if="activeSection === 'cases'" class="workspace cases-workspace">
+        <div class="toolbar"><label class="search-field"><span>⌕</span><input v-model="caseSearch" type="search" placeholder="Поиск по VIN, номеру автомобиля или номеру дела" /></label><button class="button button-primary" type="button" @click="openRepairMenu">＋ Создать страховой случай</button></div>
+        <div class="list-head case-list-head"><span>Автомобиль</span><span>Страховой случай</span><span>Страховая компания</span><span>Номер дела</span><span>Статус</span><span>Создан</span></div>
+        <div class="cars-list"><article v-for="item in visibleRepairCases" :key="item.id" class="car-row case-row"><div class="cell"><strong>{{ item.vehicleMake }} {{ item.vehicleModel }}</strong><small>VIN {{ item.vin }}</small><small>{{ item.registrationNumber }} · {{ item.ownerName }} · {{ item.ownerPhone }}</small></div><div class="cell"><strong>Случай №{{ item.caseNumber }}</strong><small>Автомобиль №{{ item.accountingNumber }}</small></div><div class="cell"><span class="insurance-pill">{{ insurers.find((insurer) => insurer.id === item.insurerId)?.name || 'Страховая не указана' }}</span></div><div class="cell">{{ item.claimNumber || '—' }}</div><div class="cell"><span class="case-status">{{ item.status === 'CREATED' ? 'Создан' : item.status }}</span></div><div class="cell muted-cell">{{ item.createdAt ? item.createdAt.slice(0, 10) : '—' }}</div></article><p v-if="!visibleRepairCases.length" class="empty-state">Страховых случаев пока нет. Создайте первый через «＋ Ремонт».</p></div>
+      </section>
+      <section v-if="activeSection === 'clients'" class="workspace">
         <div class="toolbar">
           <label class="search-field"><span>⌕</span><input v-model="search" type="search" placeholder="Поиск по марке, госномеру, VIN или телефону владельца" /></label>
           <div class="filters" role="group" aria-label="Фильтр автомобилей">
@@ -896,6 +929,7 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
     <button v-if="carFormVisible && editingCar" type="button" class="repair-cases-button button button-primary" @click="openRepairCases(editingCar)">Страховые случаи</button>
     <div v-if="repairMenuVisible" class="stub-overlay" @click.self="repairMenuVisible = false"><section class="data-modal compact-modal repair-menu-modal"><button class="icon-button" aria-label="Закрыть" @click="repairMenuVisible = false">×</button><p class="eyebrow">Создание ремонта</p><h2>Что создаём?</h2><p class="modal-subtitle">Сначала выберите тип ремонта. Страховой случай будет связан с выбранным клиентом сервиса.</p><div class="repair-type-actions"><button type="button" class="button button-primary" @click="startInsuranceCaseFlow">Страховой случай</button><button type="button" class="button button-cloud dark-button" @click="startPlaceholderRepair">Ремонт</button></div></section></div>
     <div v-if="insuranceVehiclePickerVisible" class="stub-overlay" @click.self="insuranceVehiclePickerVisible = false"><section class="data-modal repair-picker-modal"><button class="icon-button" aria-label="Закрыть" @click="insuranceVehiclePickerVisible = false">×</button><p class="eyebrow">Страховой случай</p><h2>Выберите автомобиль клиента</h2><p class="modal-subtitle">Ищем среди созданных карточек по VIN. Без выбора автомобиля страховой случай создать нельзя.</p><label class="search-field repair-vin-search"><span>⌕</span><input v-model="repairVinSearch" type="search" placeholder="Введите VIN" @input="searchRepairVehicle" /></label><div class="repair-vehicle-results"><button v-for="car in repairVehicleCandidates" :key="car.id" type="button" class="repair-vehicle-option" @click="chooseRepairVehicle(car)"><strong>{{ car.vehicle }}</strong><span>VIN: {{ car.vin }} · {{ car.registration }}</span><small>{{ car.ownerName }} · {{ car.ownerPhone }}</small></button><p v-if="!repairVehicleCandidates.length" class="empty-state">Автомобили по этому VIN не найдены.</p></div></section></div>
+    <div v-if="insuranceCaseCreateVisible" class="stub-overlay" @click.self="insuranceCaseCreateVisible = false"><form class="data-modal insurance-case-create-modal" @submit.prevent="saveNewInsuranceCase"><button type="button" class="icon-button" aria-label="Закрыть" @click="insuranceCaseCreateVisible = false">×</button><p class="eyebrow">Автомобиль №{{ repairCaseCar?.number }} · VIN {{ repairCaseCar?.vin }}</p><h2>Новый страховой случай</h2><p class="modal-subtitle">{{ repairCaseCar?.vehicle }} · {{ repairCaseCar?.registration }}</p><div class="data-form-grid"><label><span>Номер дела / направления *</span><input v-model="newInsuranceCaseForm.caseNumber" required /></label><label><span>Страховая компания *</span><select v-model="newInsuranceCaseForm.insurerId" required><option value="" disabled>Выберите страховую</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Номер дела (дополнительно) *</span><input v-model="newInsuranceCaseForm.claimNumber" required /></label><label class="form-wide"><span>Фото автомобиля *</span><input type="file" accept="image/*" multiple required @change="readRepairCasePhotos" /><small>Добавьте фотографии повреждений. Максимум 20 файлов по 8 МБ.</small><div v-if="repairCasePhotos.length" class="form-photo-preview"><div v-for="photo in repairCasePhotos" :key="photo.fileName"><span>{{ photo.fileName }}</span></div></div></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="insuranceCaseCreateVisible = false">Отмена</button><button class="button button-primary" type="submit">Создать страховой случай</button></div></form></div>
     <div v-if="repairCasesVisible" class="stub-overlay" @click.self="repairCasesVisible = false"><section class="data-modal repair-cases-modal"><button class="icon-button" aria-label="Закрыть" @click="repairCasesVisible = false">×</button><p class="eyebrow">Автомобиль №{{ repairCaseCar?.number }} · VIN {{ repairCaseCar?.vin }}</p><h2>Страховые случаи</h2><div v-if="repairCasesBusy" class="empty-state">Загружаем случаи…</div><template v-else><div class="repair-case-list"><div v-for="item in repairCases" :key="item.id" class="repair-case-card"><div><strong>Случай №{{ item.caseNumber }}</strong><small>{{ item.claimNumber || 'Номер дела не указан' }} · {{ item.status }}</small><small>{{ item.insuredPerson || 'Страхователь не указан' }}</small></div><div><button type="button" class="settings-edit" @click="openRepairCasePhotos(item)">Фото</button><button type="button" class="settings-edit" @click="startRepairCase(item)">Изменить</button><button type="button" class="settings-delete-text" @click="deleteRepairCase(item)">Удалить</button></div></div></div><button type="button" class="button button-primary" @click="startRepairCase()">＋ Новый страховой случай</button><form v-if="editingRepairCase || repairCaseForm.caseNumber" class="data-form-grid repair-case-form" @submit.prevent="saveRepairCase"><label><span>Номер дела / направления *</span><input v-model="repairCaseForm.caseNumber" required /></label><label><span>Статус *</span><select v-model="repairCaseForm.status" required><option value="OPEN">Открыт</option><option value="IN_REPAIR">В ремонте</option><option value="READY">Готов</option><option value="CLOSED">Закрыт</option></select></label><label><span>Страхователь</span><input v-model="repairCaseForm.insuredPerson" /></label><label><span>Страховая компания *</span><select v-model="repairCaseForm.insurerId" required><option value="" disabled>Выберите страховую</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Исполнитель *</span><select v-model="repairCaseForm.contractorId" required><option value="" disabled>Выберите исполнителя</option><option v-for="item in contractors" :key="item.id" :value="String(item.id)">{{ item.shortName }}</option></select></label><label><span>Номер дела (дополнительно)</span><input v-model="repairCaseForm.claimNumber" /></label><label><span>Смена</span><select v-model="repairCaseForm.shiftId"><option value="">Не выбрана</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Дата приёмки</span><input v-model="repairCaseForm.acceptedAt" type="date" /></label><div class="modal-actions form-wide"><button class="button button-primary" type="submit">Сохранить страховой случай</button></div></form></template></section></div>
     <div v-if="toast" class="toast">{{ toast }}</div>
   </template>
