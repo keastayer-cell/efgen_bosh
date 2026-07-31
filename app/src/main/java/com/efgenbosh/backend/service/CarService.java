@@ -10,6 +10,8 @@ import com.efgenbosh.backend.repository.CarRepository;
 import com.efgenbosh.backend.repository.PartRepository;
 import com.efgenbosh.backend.repository.WorkOrderRepository;
 import com.efgenbosh.backend.repository.DefectAnalysisRepository;
+import com.efgenbosh.backend.repository.CarHistoryRepository;
+import com.efgenbosh.backend.domain.CarHistory;
 import jakarta.transaction.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,12 +27,14 @@ public class CarService {
     private final PartRepository parts;
     private final WorkOrderRepository workOrders;
     private final DefectAnalysisRepository defectAnalyses;
+    private final CarHistoryRepository history;
 
-    public CarService(CarRepository cars, PartRepository parts, WorkOrderRepository workOrders, DefectAnalysisRepository defectAnalyses) {
+    public CarService(CarRepository cars, PartRepository parts, WorkOrderRepository workOrders, DefectAnalysisRepository defectAnalyses, CarHistoryRepository history) {
         this.cars = cars;
         this.parts = parts;
         this.workOrders = workOrders;
         this.defectAnalyses = defectAnalyses;
+        this.history = history;
     }
 
     @Transactional
@@ -59,7 +63,7 @@ public class CarService {
         Car car = new Car();
         car.setAccountingNumber(cars.findMaximumAccountingNumber() + 1);
         apply(car, request);
-        return response(cars.save(car));
+        Car saved = cars.save(car); record(saved, "CAR_CREATED", "Автомобиль создан"); return response(saved);
     }
 
     @Transactional
@@ -67,6 +71,7 @@ public class CarService {
         Car car = car(id);
         apply(car, request);
         car.touch();
+        record(car, "CAR_UPDATED", "Карточка автомобиля изменена");
         return response(car);
     }
 
@@ -76,6 +81,7 @@ public class CarService {
         car.setDelivered(delivered);
         car.setDeliveredAt(delivered ? LocalDate.now() : null);
         car.touch();
+        record(car, delivered ? "CAR_DELIVERED" : "CAR_DELIVERY_CANCELLED", delivered ? "Автомобиль выдан" : "Выдача отменена");
         return response(car);
     }
 
@@ -84,6 +90,7 @@ public class CarService {
         Car car = car(id);
         car.setAcceptedAt(accepted ? LocalDate.now() : null);
         car.touch();
+        record(car, accepted ? "CAR_ACCEPTED" : "CAR_ACCEPTANCE_CANCELLED", accepted ? "Автомобиль принят" : "Приёмка отменена");
         return response(car);
     }
 
@@ -94,6 +101,8 @@ public class CarService {
         workOrders.deleteByCar_Id(id);
         cars.deleteById(id);
     }
+
+    private void record(Car car, String type, String details) { CarHistory event = new CarHistory(); event.setCar(car); event.setEventType(type); event.setDetails(details); history.save(event); }
 
     @Transactional
     public PartResponse addPart(Long carId, PartRequest request) {

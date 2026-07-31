@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { requestJson } from '../api/http'
 
 const tokenKey = 'efgen_access_token'
@@ -23,6 +23,7 @@ const vehicleAliases = ref([])
 const contractors = ref([])
 const carsBusy = ref(false)
 const carsError = ref('')
+const carHistory = ref([])
 const modal = ref(null)
 const toast = ref('')
 const carFormVisible = ref(false)
@@ -39,6 +40,7 @@ const selectedWorkOrderCar = ref(null)
 const workOrder = ref(null)
 const workOrderBusy = ref(false)
 const workOrderError = ref('')
+const generatedDocuments = ref([])
 const workOrderDocumentType = ref('order')
 const defectVisible = ref(false)
 const defectBusy = ref(false)
@@ -96,7 +98,7 @@ async function loadCars() {
   carsBusy.value = true
   carsError.value = ''
   try {
-    cars.value = await requestJson('/api/v1/cars')
+    cars.value = await requestJson(search.value.trim() ? `/api/v1/cars/search?q=${encodeURIComponent(search.value.trim())}` : '/api/v1/cars')
   } catch (error) {
     carsError.value = error.message
   } finally {
@@ -165,6 +167,7 @@ function openStandaloneWorkOrder() {
   selectedWorkOrderCar.value = { id: null, number: 'новый', vehicle: 'Без автомобиля', registration: '', parts: [] }
   workOrder.value = { id: null, carId: null, status: 'DRAFT', documentDate: new Date().toISOString().slice(0, 10), customer: '', orderNumber: '', invoiceNumber: '', actNumber: '', lines: [], partLines: [] }
   workOrderError.value = ''; workOrderVisible.value = true
+  generatedDocuments.value = []
 }
 
 function openCarForm() {
@@ -226,11 +229,12 @@ async function deleteDirectoryItem(item) {
   }
 }
 
-function openCarEdit(car) {
+async function openCarEdit(car) {
   modal.value = null
   editingCar.value = car
   const source = cars.value.find((item) => item.id === car.id) || car
   selectedCar.value = source
+  carHistory.value = await requestJson(`/api/v1/cars/${source.id}/history`).catch(() => [])
   carForm.value = {
     vehicleName: source.vehicleName || '',
     vehicleNameLatin: source.vehicleNameLatin || '',
@@ -314,6 +318,7 @@ async function openWorkOrder(car) {
   workOrderError.value = ''
   try {
     workOrder.value = await requestJson(`/api/v1/cars/${car.id}/work-order`)
+    generatedDocuments.value = await requestJson(`/api/v1/work-orders/${workOrder.value.id}/documents`).catch(() => [])
     workOrder.value.lines = workOrder.value.lines.map((line) => ({ ...line, catalogId: '' }))
     workOrder.value.partLines = (workOrder.value.partLines || []).map((line) => ({ ...line }))
   } catch (error) {
@@ -381,6 +386,7 @@ async function saveWorkOrder() {
 }
 
 function documentTitle() {
+  if (workOrderDocumentType.value === 'bundle') return 'Печатный комплект'
   if (workOrderDocumentType.value === 'invoice') return 'Счёт на оплату'
   if (workOrderDocumentType.value === 'act') return 'Акт выполненных работ'
   return 'Заказ-наряд'
@@ -572,6 +578,8 @@ onMounted(() => {
     loadDirectories()
   }
 })
+
+watch(search, () => { window.clearTimeout(window.__efgenSearchTimer); window.__efgenSearchTimer = window.setTimeout(loadCars, 250) })
 </script>
 
 <template>
@@ -645,8 +653,11 @@ onMounted(() => {
     <button type="button" class="standalone-order-button button button-primary" @click="openStandaloneWorkOrder">＋ Новый заказ-наряд</button>
     <button v-if="directoriesVisible" type="button" class="contractors-button button button-cloud" @click="openContractorForm()">Исполнители</button>
     <button v-if="defectVisible && defect.recommendations" type="button" class="defect-transfer-button button button-primary" @click="transferDefectRecommendations">Перенести рекомендации в заказ-наряд</button>
+    <div v-if="workOrderVisible && generatedDocuments.length" class="generated-documents-toolbar"><strong>Документы:</strong><span v-for="doc in generatedDocuments.slice(0, 6)" :key="doc.id">{{ doc.documentType }}{{ doc.documentNumber ? ` №${doc.documentNumber}` : '' }}</span></div>
+    <button v-if="workOrderVisible && workOrder" type="button" class="bundle-print-button button button-cloud" @click="printDocument('bundle')">Печатный комплект</button>
 
     <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button" @click="printCarDocument('acceptance')">Акт приёма</button><button type="button" class="link-button" @click="printCarDocument('delivery')">Акт выдачи</button><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
+    <div v-if="carFormVisible && editingCar && carHistory.length" class="car-history-toolbar"><strong>История:</strong><span v-for="event in carHistory.slice(0, 4)" :key="event.id">{{ event.details }}</span></div>
     <div v-if="carFormVisible && vehicleAliases.length" class="vehicle-alias-toolbar"><span>Модель из справочника:</span><select @change="applyVehicleAlias($event.target.value)"><option value="">Выбрать модель</option><option v-for="item in vehicleAliases" :key="item.id" :value="item.id">{{ item.sourceName }}<template v-if="item.normalizedLatinName"> · {{ item.normalizedLatinName }}</template></option></select></div>
     <div v-if="carFormVisible && contractors.length" class="contractor-toolbar"><span>Исполнитель:</span><select :value="carForm.contractorId" @change="applyContractor($event.target.value)"><option value="">Не выбран</option><option v-for="item in contractors" :key="item.id" :value="item.id">{{ item.shortName }} · {{ item.code }}</option></select></div>
 
@@ -711,6 +722,9 @@ onMounted(() => {
 .contractors-button { position: fixed; right: 190px; top: 88px; z-index: 10; }
 .contractor-modal { width: min(900px, 100%); }
 .defect-transfer-button { position: fixed; right: 24px; bottom: 76px; z-index: 21; }
+.car-history-toolbar { position: fixed; left: 24px; top: 88px; z-index: 20; display: flex; gap: 9px; align-items: center; max-width: 560px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 11px; }
+.generated-documents-toolbar { position: fixed; left: 24px; bottom: 76px; z-index: 20; display: flex; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: white; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); color: var(--muted); font-size: 11px; }
+.bundle-print-button { position: fixed; right: 24px; bottom: 76px; z-index: 21; }
 .directory-modal { width: min(760px, 100%); }
 .directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }
 .directory-tabs button { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }

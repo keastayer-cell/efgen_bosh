@@ -17,7 +17,7 @@ public class GeneratedDocumentController {
     @GetMapping public List<GeneratedDocumentResponse> list(@PathVariable Long workOrderId) { return documents.findAllByWorkOrder_IdOrderByCreatedAtDesc(workOrderId).stream().map(GeneratedDocumentResponse::from).toList(); }
     @PostMapping("/{type}") @ResponseStatus(HttpStatus.CREATED)
     public GeneratedDocumentResponse create(@PathVariable Long workOrderId, @PathVariable String type, @RequestParam(defaultValue = "") String number) {
-        if (!List.of("order", "invoice", "act", "acceptance", "delivery").contains(type)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный тип документа.");
+        if (!List.of("order", "invoice", "act", "acceptance", "delivery", "bundle").contains(type)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный тип документа.");
         GeneratedDocument d = new GeneratedDocument(); d.setWorkOrder(orders.findById(workOrderId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Заказ-наряд не найден."))); d.setDocumentType(type); d.setDocumentNumber(number == null ? "" : number); return GeneratedDocumentResponse.from(documents.save(d));
     }
 }
