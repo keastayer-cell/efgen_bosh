@@ -35,6 +35,11 @@ const workOrder = ref(null)
 const workOrderBusy = ref(false)
 const workOrderError = ref('')
 const workOrderDocumentType = ref('order')
+const defectVisible = ref(false)
+const defectBusy = ref(false)
+const defectError = ref('')
+const selectedDefectCar = ref(null)
+const defect = ref({ id: null, status: 'DRAFT', findings: '', recommendations: '', photos: [] })
 const directoryType = ref('insurers')
 const editingDirectory = ref(null)
 const directoryForm = ref({ name: '', code: '', categoryName: '', defaultUnit: 'н/ч', inn: '', address: '', phone: '', note: '' })
@@ -176,6 +181,7 @@ function openCarEdit(car) {
   modal.value = null
   editingCar.value = car
   const source = cars.value.find((item) => item.id === car.id) || car
+  selectedCar.value = source
   carForm.value = {
     vehicleName: source.vehicleName || '',
     vehicleNameLatin: source.vehicleNameLatin || '',
@@ -200,6 +206,32 @@ function openPartForm(car) {
   editingPart.value = null
   partForm.value = emptyPartForm()
   partFormVisible.value = true
+}
+
+async function openDefect(car) {
+  modal.value = null; selectedDefectCar.value = car; defectBusy.value = true; defectError.value = ''
+  try { defect.value = await requestJson(`/api/v1/cars/${car.id}/defect-analysis`) }
+  catch (error) { defectError.value = error.message }
+  finally { defectBusy.value = false; defectVisible.value = true }
+}
+
+function readDefectPhotos(event) {
+  const files = Array.from(event.target.files || []).slice(0, 8)
+  Promise.all(files.map((file) => new Promise((resolve, reject) => {
+    const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file)
+  }))).then((photos) => { defect.value.photos = photos }).catch((error) => { defectError.value = error.message })
+}
+
+async function saveDefect() {
+  if (!selectedDefectCar.value || !defect.value) return
+  defectBusy.value = true; defectError.value = ''
+  try {
+    defect.value = await requestJson(`/api/v1/cars/${selectedDefectCar.value.id}/defect-analysis`, {
+      method: 'PUT', body: JSON.stringify({ status: defect.value.status, findings: defect.value.findings, recommendations: defect.value.recommendations, photos: defect.value.photos }),
+    })
+    showToast('Дефектовка сохранена'); defectVisible.value = false
+  } catch (error) { defectError.value = error.message }
+  finally { defectBusy.value = false }
 }
 
 function emptyWorkOrderLine() {
@@ -437,6 +469,11 @@ function openStub(name) {
     openDirectories()
     return
   }
+  if (name === 'Дефектовка') {
+    const source = selectedCar.value || visibleCars.value[0]
+    if (source) openDefect(mappedCars.value.find((item) => item.id === source.id) || source)
+    return
+  }
   modal.value = name
 }
 
@@ -524,6 +561,8 @@ onMounted(() => {
 
     <div v-if="workOrderVisible && workOrder" class="document-toolbar"><span>Выбран документ: {{ documentTitle() }} · печать:</span><button type="button" class="link-button" @click="printDocument('order')">Заказ-наряд</button><button type="button" class="link-button" @click="printDocument('invoice')">Счёт</button><button type="button" class="link-button" @click="printDocument('act')">Акт</button></div>
 
+    <div v-if="defectVisible" class="stub-overlay" @click.self="defectVisible = false"><section class="data-modal defect-modal"><button class="icon-button" aria-label="Закрыть" @click="defectVisible = false">×</button><p class="eyebrow">Осмотр автомобиля</p><h2>Дефектовка</h2><p class="modal-subtitle">{{ selectedDefectCar?.number }} · {{ selectedDefectCar?.vehicle }} · {{ selectedDefectCar?.registration }}</p><div v-if="defectBusy" class="empty-state">Загружаем дефектовку…</div><div v-else-if="defectError" class="empty-state">{{ defectError }}</div><form v-else class="data-form-grid" @submit.prevent="saveDefect"><label><span>Статус</span><select v-model="defect.status"><option value="DRAFT">Черновик</option><option value="CONFIRMED">Подтверждено</option></select></label><label class="form-wide"><span>Повреждения и замечания</span><textarea v-model="defect.findings" rows="5" placeholder="Передний бампер, левая дверь…"></textarea></label><label class="form-wide"><span>Рекомендованные работы и запчасти</span><textarea v-model="defect.recommendations" rows="5" placeholder="Замена бампера, окраска двери…"></textarea></label><label class="form-wide"><span>Фотографии осмотра (до 8)</span><input type="file" accept="image/*" multiple @change="readDefectPhotos" /></label><div v-if="defect.photos.length" class="defect-photo-grid form-wide"><img v-for="(photo, index) in defect.photos" :key="`${photo.slice(0, 24)}-${index}`" :src="photo" alt="Фото повреждения" /></div><div class="modal-actions form-wide"><button type="button" class="button button-cloud dark-button" @click="defectVisible = false">Отмена</button><button class="button button-primary" type="submit">Сохранить дефектовку</button></div></form></section></div>
+
     <div v-if="carFormVisible" class="stub-overlay" @click.self="carFormVisible = false"><form class="data-modal" @submit.prevent="saveCar"><button type="button" class="icon-button" aria-label="Закрыть" @click="carFormVisible = false">×</button><p class="eyebrow">Карточка автомобиля</p><h2>{{ editingCar ? `Автомобиль №${editingCar.accountingNumber}` : 'Новый автомобиль' }}</h2><div class="data-form-grid"><label><span>Госномер</span><input v-model="carForm.registrationNumber" required placeholder="А123ВС124" /></label><label><span>Автомобиль</span><input v-model="carForm.vehicleName" required placeholder="Джили Окаванго" /></label><label class="form-wide"><span>Марка / модель латиницей</span><input v-model="carForm.vehicleNameLatin" placeholder="HYUNDAI CRETA" /></label><label><span>VIN</span><input v-model="carForm.vin" placeholder="VIN автомобиля" /></label><label><span>Страхователь</span><input v-model="carForm.insuredPerson" placeholder="ФИО или организация" /></label><label><span>Страховая</span><select v-model="carForm.insurerId"><option value="">Не выбрана</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Номер дела</span><input v-model="carForm.claimNumber" placeholder="108148/26" /></label><label><span>Смена</span><select v-model="carForm.shiftId"><option value="">Не выбрана</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Дата начала</span><input v-model="carForm.startedAt" type="date" /></label><label><span>Дата приёмки</span><input v-model="carForm.acceptedAt" type="date" /></label><label><span>Дата записи</span><input v-model="carForm.appointmentDate" type="date" /></label><label class="form-wide"><span>Папка документов</span><input v-model="carForm.documentFolderUrl" type="url" placeholder="https://..." /></label><label class="form-wide"><span>Комментарий</span><textarea v-model="carForm.comment" rows="3"></textarea></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="carFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingCar ? 'Сохранить изменения' : 'Сохранить автомобиль' }}</button></div></form></div>
 
     <div v-if="partFormVisible" class="stub-overlay" @click.self="partFormVisible = false"><form class="data-modal compact-modal" @submit.prevent="savePart"><button type="button" class="icon-button" aria-label="Закрыть" @click="partFormVisible = false">×</button><p class="eyebrow">Заказ запчасти</p><h2>{{ editingPart ? 'Изменить деталь' : 'Добавить деталь' }}</h2><p class="modal-subtitle">{{ selectedCar?.number }} · {{ selectedCar?.vehicle }}</p><div class="data-form-grid"><label><span>Деталь</span><input v-model="partForm.name" required placeholder="Бампер передний" /></label><label><span>Артикул</span><input v-model="partForm.article" placeholder="604A124500" /></label><label><span>Поставщик</span><select v-model="partForm.supplierId"><option value="">Не выбран</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Ожидаемая дата</span><input v-model="partForm.expectedDate" type="date" /></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="partFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingPart ? 'Сохранить изменения' : 'Добавить деталь' }}</button></div></form></div>
@@ -568,6 +607,9 @@ onMounted(() => {
 .work-order-part-picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; color: var(--muted); font-size: 12px; }
 .small-icon { width: 30px; height: 30px; }
 .work-order-total { margin-top: 18px; text-align: right; font-size: 16px; }
+.defect-modal { width: min(760px, 100%); }
+.defect-photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.defect-photo-grid img { width: 100%; height: 120px; object-fit: cover; border-radius: 9px; border: 1px solid var(--line); }
 .directory-modal { width: min(760px, 100%); }
 .directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }
 .directory-tabs button { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }
