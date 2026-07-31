@@ -24,6 +24,7 @@ const toast = ref('')
 const carFormVisible = ref(false)
 const partFormVisible = ref(false)
 const editingCar = ref(null)
+const editingPart = ref(null)
 const selectedCar = ref(null)
 const carForm = ref(emptyCarForm())
 const partForm = ref(emptyPartForm())
@@ -128,7 +129,22 @@ function openCarEdit(car) {
 function openPartForm(car) {
   modal.value = null
   selectedCar.value = car
+  editingPart.value = null
   partForm.value = emptyPartForm()
+  partFormVisible.value = true
+}
+
+function openPartEdit(car, part) {
+  modal.value = null
+  selectedCar.value = car
+  editingPart.value = part
+  partForm.value = {
+    name: part.name || '',
+    article: part.article || '',
+    supplierId: part.supplierId ? String(part.supplierId) : '',
+    expectedDate: part.expectedDate || '',
+    sortOrder: part.sortOrder || 0,
+  }
   partFormVisible.value = true
 }
 
@@ -154,11 +170,14 @@ async function saveCar() {
   }
 }
 
-async function createPart() {
+async function savePart() {
   if (!selectedCar.value) return
   try {
-    await requestJson(`/api/v1/cars/${selectedCar.value.id}/parts`, {
-      method: 'POST',
+    const path = editingPart.value
+      ? `/api/v1/cars/${selectedCar.value.id}/parts/${editingPart.value.id}`
+      : `/api/v1/cars/${selectedCar.value.id}/parts`
+    await requestJson(path, {
+      method: editingPart.value ? 'PUT' : 'POST',
       body: JSON.stringify({
         ...partForm.value,
         supplierId: partForm.value.supplierId ? Number(partForm.value.supplierId) : null,
@@ -167,7 +186,19 @@ async function createPart() {
     })
     partFormVisible.value = false
     await loadCars()
-    showToast('Запчасть добавлена')
+    showToast(editingPart.value ? 'Запчасть сохранена' : 'Запчасть добавлена')
+    editingPart.value = null
+  } catch (error) {
+    showToast(error.message)
+  }
+}
+
+async function deletePart(car, part) {
+  if (!window.confirm(`Удалить запчасть «${part.name}»?`)) return
+  try {
+    await requestJson(`/api/v1/cars/${car.id}/parts/${part.id}`, { method: 'DELETE' })
+    await loadCars()
+    showToast('Запчасть удалена')
   } catch (error) {
     showToast(error.message)
   }
@@ -298,7 +329,7 @@ onMounted(() => {
               <div class="cell muted-cell">{{ car.record }}</div><div class="cell">{{ car.shift }}</div>
               <div class="cell"><button v-if="car.status !== 'delivered'" class="link-button" @click="toggleDelivered(car)">Выдать</button><button v-else class="link-button" @click="toggleDelivered(car)">Отменить</button></div>
             </div>
-            <div class="row-actions"><button class="link-button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" @click="openStub('Заказ-наряд')">Заказ-наряд</button><button class="link-button" @click="openPartForm(car)">＋ Запчасть</button><button v-for="part in car.parts" :key="part.id" class="link-button" @click="togglePartReceived(car, part)">{{ part.received ? `Отменить: ${part.name}` : `Поступила: ${part.name}` }}</button></div>
+            <div class="row-actions"><button class="link-button" @click="openStub('Дефектовка')">Дефектовка</button><button class="link-button" @click="openStub('Заказ-наряд')">Заказ-наряд</button><button class="link-button" @click="openPartForm(car)">＋ Запчасть</button><template v-for="part in car.parts" :key="part.id"><button class="link-button" @click="togglePartReceived(car, part)">{{ part.received ? `Отменить: ${part.name}` : `Поступила: ${part.name}` }}</button><button class="link-button" @click="openPartEdit(car, part)">Изменить: {{ part.name }}</button><button class="link-button danger-link" @click="deletePart(car, part)">Удалить</button></template></div>
           </article>
           <div v-if="!carsBusy && !carsError && !visibleCars.length" class="empty-state">По выбранному фильтру автомобили не найдены.</div>
         </div>
@@ -309,7 +340,7 @@ onMounted(() => {
 
     <div v-if="carFormVisible" class="stub-overlay" @click.self="carFormVisible = false"><form class="data-modal" @submit.prevent="saveCar"><button type="button" class="icon-button" aria-label="Закрыть" @click="carFormVisible = false">×</button><p class="eyebrow">Карточка автомобиля</p><h2>{{ editingCar ? `Автомобиль №${editingCar.accountingNumber}` : 'Новый автомобиль' }}</h2><div class="data-form-grid"><label><span>Госномер</span><input v-model="carForm.registrationNumber" required placeholder="А123ВС124" /></label><label><span>Автомобиль</span><input v-model="carForm.vehicleName" required placeholder="Джили Окаванго" /></label><label class="form-wide"><span>Марка / модель латиницей</span><input v-model="carForm.vehicleNameLatin" placeholder="HYUNDAI CRETA" /></label><label><span>VIN</span><input v-model="carForm.vin" placeholder="VIN автомобиля" /></label><label><span>Страхователь</span><input v-model="carForm.insuredPerson" placeholder="ФИО или организация" /></label><label><span>Страховая</span><select v-model="carForm.insurerId"><option value="">Не выбрана</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Номер дела</span><input v-model="carForm.claimNumber" placeholder="108148/26" /></label><label><span>Смена</span><select v-model="carForm.shiftId"><option value="">Не выбрана</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Дата начала</span><input v-model="carForm.startedAt" type="date" /></label><label class="form-wide"><span>Комментарий</span><textarea v-model="carForm.comment" rows="3"></textarea></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="carFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingCar ? 'Сохранить изменения' : 'Сохранить автомобиль' }}</button></div></form></div>
 
-    <div v-if="partFormVisible" class="stub-overlay" @click.self="partFormVisible = false"><form class="data-modal compact-modal" @submit.prevent="createPart"><button type="button" class="icon-button" aria-label="Закрыть" @click="partFormVisible = false">×</button><p class="eyebrow">Заказ запчасти</p><h2>Добавить деталь</h2><p class="modal-subtitle">{{ selectedCar?.number }} · {{ selectedCar?.vehicle }}</p><div class="data-form-grid"><label><span>Деталь</span><input v-model="partForm.name" required placeholder="Бампер передний" /></label><label><span>Артикул</span><input v-model="partForm.article" placeholder="604A124500" /></label><label><span>Поставщик</span><select v-model="partForm.supplierId"><option value="">Не выбран</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Ожидаемая дата</span><input v-model="partForm.expectedDate" type="date" /></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="partFormVisible = false">Отмена</button><button class="button button-primary" type="submit">Добавить деталь</button></div></form></div>
+    <div v-if="partFormVisible" class="stub-overlay" @click.self="partFormVisible = false"><form class="data-modal compact-modal" @submit.prevent="savePart"><button type="button" class="icon-button" aria-label="Закрыть" @click="partFormVisible = false">×</button><p class="eyebrow">Заказ запчасти</p><h2>{{ editingPart ? 'Изменить деталь' : 'Добавить деталь' }}</h2><p class="modal-subtitle">{{ selectedCar?.number }} · {{ selectedCar?.vehicle }}</p><div class="data-form-grid"><label><span>Деталь</span><input v-model="partForm.name" required placeholder="Бампер передний" /></label><label><span>Артикул</span><input v-model="partForm.article" placeholder="604A124500" /></label><label><span>Поставщик</span><select v-model="partForm.supplierId"><option value="">Не выбран</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Ожидаемая дата</span><input v-model="partForm.expectedDate" type="date" /></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="partFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingPart ? 'Сохранить изменения' : 'Добавить деталь' }}</button></div></form></div>
 
     <div v-if="modal" class="stub-overlay" @click.self="modal = null"><section class="stub-modal"><button class="icon-button" aria-label="Закрыть" @click="modal = null">×</button><p class="eyebrow">Заглушка раздела</p><h2>{{ modal }}</h2><p>Внешний вид и место действия уже подготовлены. Реальная загрузка и сохранение данных будут подключены к backend следующим этапом.</p><button class="button button-primary" @click="modal = null">Понятно</button></section></div>
     <div v-if="toast" class="toast">{{ toast }}</div>
@@ -334,4 +365,5 @@ onMounted(() => {
 .form-wide { grid-column: 1 / -1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 24px; }
 .dark-button { color: var(--brand); border-color: var(--line); background: var(--soft); }
+.danger-link { color: #b44848; }
 </style>
