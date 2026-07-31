@@ -15,6 +15,7 @@
 - команды `dev`, `build`, `lint`, `test`, `test:e2e`;
 - Flyway-миграции `V<номер>__<описание>.sql`;
 - CI-проверки backend, web и PostgreSQL migrations;
+- локальный PostgreSQL как системный сервис, без Docker Compose;
 - секреты только через переменные окружения.
 
 ## Что не копируем

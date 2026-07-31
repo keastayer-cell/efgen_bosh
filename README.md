@@ -62,28 +62,44 @@ characterization-тестами старой системы.
 
 - Java 21;
 - Maven 3.6.3+;
-- PostgreSQL 17 либо Docker-совместимый container runtime;
+- PostgreSQL 15+;
 - Node.js `^22.18.0 || >=24.12.0`;
 - npm.
 
 ## Локальная база
 
-```bash
-cp .env.example .env
-# Замените BOSH_DB_PASSWORD в .env.
-docker compose up -d postgres
+Создайте пользователя и базу данных:
+
+```sql
+CREATE ROLE efgen_bosh LOGIN PASSWORD 'local-password';
+CREATE DATABASE efgen_bosh OWNER efgen_bosh;
 ```
 
-PostgreSQL доступен на `127.0.0.1:5434`, чтобы не конфликтовать с другими
-локальными проектами.
+Flyway создаёт и обновляет таблицы при запуске backend. Миграции вручную
+применять не нужно.
+
+Убедитесь, что PostgreSQL запущен:
+
+```bash
+pg_isready -h 127.0.0.1 -p 5432
+```
+
+Для PostgreSQL из Homebrew:
+
+```bash
+brew services start postgresql@17
+```
+
+Создайте локальный env-файл и замените пароль:
+
+```bash
+cp .env.example .env
+```
 
 ## Запуск backend
 
 ```bash
-set -a
-source .env
-set +a
-mvn -f app/pom.xml spring-boot:run
+EFGEN_BOSH_ENV_FILE="$PWD/.env" mvn -f app/pom.xml spring-boot:run
 ```
 
 Проверка:

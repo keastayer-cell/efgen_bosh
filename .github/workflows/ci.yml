@@ -83,9 +83,12 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress -f app/pom.xml -DskipTests package
       - name: Apply migrations and start backend
         env:
-          BOSH_DB_URL: jdbc:postgresql://127.0.0.1:5432/efgen_bosh_ci
-          BOSH_DB_USER: efgen_bosh
-          BOSH_DB_PASSWORD: efgen_bosh_ci_password
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: efgen_bosh_ci
+          DB_SCHEMA: public
+          DB_USER: efgen_bosh
+          DB_PASSWORD: efgen_bosh_ci_password
         run: bash scripts/verify-migrations-postgres.sh
 
   operations:

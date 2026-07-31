@@ -1,17 +1,21 @@
 spring:
   application:
     name: efgen-bosh-app
-  datasource:
-    url: ${BOSH_DB_URL:jdbc:postgresql://127.0.0.1:5434/efgen_bosh}
-    username: ${BOSH_DB_USER:efgen_bosh}
-    password: ${BOSH_DB_PASSWORD}
+
+  config:
+    import: optional:file:${EFGEN_BOSH_ENV_FILE:.env}[.properties]
+
+  profiles:
+    active: ${APP_PROFILE:local}
+
   flyway:
     enabled: true
     locations: classpath:db/migration
+    default-schema: ${DB_SCHEMA:public}
+    schemas: ${DB_SCHEMA:public}
+
   jpa:
     open-in-view: false
-    hibernate:
-      ddl-auto: validate
     properties:
       hibernate:
         jdbc:
