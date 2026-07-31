@@ -381,6 +381,15 @@ async function saveCar() {
   }
 }
 
+async function deleteCar() {
+  if (!editingCar.value || !window.confirm(`Удалить автомобиль №${editingCar.value.accountingNumber} вместе с запчастями и документами?`)) return
+  try {
+    await requestJson(`/api/v1/cars/${editingCar.value.id}`, { method: 'DELETE' })
+    carFormVisible.value = false; editingCar.value = null; selectedCar.value = null
+    await loadCars(); showToast('Автомобиль удалён')
+  } catch (error) { showToast(error.message) }
+}
+
 async function savePart() {
   if (!selectedCar.value) return
   try {
@@ -570,6 +579,8 @@ onMounted(() => {
 
     <footer class="global-footer"><span>Efgen Bosh · рабочий интерфейс</span><span>Данные разделов подключаются поэтапно</span></footer>
 
+    <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
+
     <div v-if="workOrderVisible && workOrder" class="document-toolbar"><span>Номера документов:</span><input v-model="workOrder.orderNumber" placeholder="Заказ-наряд №" /><input v-model="workOrder.invoiceNumber" placeholder="Счёт №" /><input v-model="workOrder.actNumber" placeholder="Акт №" /><span>Печать:</span><button type="button" class="link-button" @click="printDocument('order')">Заказ-наряд</button><button type="button" class="link-button" @click="printDocument('invoice')">Счёт</button><button type="button" class="link-button" @click="printDocument('act')">Акт</button></div>
 
     <div v-if="defectVisible" class="stub-overlay" @click.self="defectVisible = false"><section class="data-modal defect-modal"><button class="icon-button" aria-label="Закрыть" @click="defectVisible = false">×</button><p class="eyebrow">Осмотр автомобиля</p><h2>Дефектовка</h2><p class="modal-subtitle">{{ selectedDefectCar?.number }} · {{ selectedDefectCar?.vehicle }} · {{ selectedDefectCar?.registration }}</p><div v-if="defectBusy" class="empty-state">Загружаем дефектовку…</div><div v-else-if="defectError" class="empty-state">{{ defectError }}</div><form v-else class="data-form-grid" @submit.prevent="saveDefect"><label><span>Статус</span><select v-model="defect.status"><option value="DRAFT">Черновик</option><option value="CONFIRMED">Подтверждено</option></select></label><label class="form-wide"><span>Повреждения и замечания</span><textarea v-model="defect.findings" rows="5" placeholder="Передний бампер, левая дверь…"></textarea></label><label class="form-wide"><span>Рекомендованные работы и запчасти</span><textarea v-model="defect.recommendations" rows="5" placeholder="Замена бампера, окраска двери…"></textarea></label><label class="form-wide"><span>Фотографии осмотра (до 8)</span><input type="file" accept="image/*" multiple @change="readDefectPhotos" /></label><div v-if="defect.photos.length" class="defect-photo-grid form-wide"><img v-for="(photo, index) in defect.photos" :key="`${photo.slice(0, 24)}-${index}`" :src="photo" alt="Фото повреждения" /></div><div class="modal-actions form-wide"><button type="button" class="button button-cloud dark-button" @click="defectVisible = false">Отмена</button><button class="button button-primary" type="submit">Сохранить дефектовку</button></div></form></section></div>
@@ -621,6 +632,7 @@ onMounted(() => {
 .defect-modal { width: min(760px, 100%); }
 .defect-photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .defect-photo-grid img { width: 100%; height: 120px; object-fit: cover; border-radius: 9px; border: 1px solid var(--line); }
+.car-delete-toolbar { position: fixed; right: 24px; bottom: 24px; z-index: 20; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border: 1px solid #ead1d1; border-radius: 10px; background: #fff7f7; box-shadow: 0 8px 30px rgb(8 43 37 / 12%); font-size: 12px; }
 .directory-modal { width: min(760px, 100%); }
 .directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }
 .directory-tabs button { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }

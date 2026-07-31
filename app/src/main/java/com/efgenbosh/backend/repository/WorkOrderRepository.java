@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface WorkOrderRepository extends JpaRepository<WorkOrder, Long> {
     @EntityGraph(attributePaths = "lines")
     Optional<WorkOrder> findByCarId(Long carId);
+    void deleteByCar_Id(Long carId);
 }

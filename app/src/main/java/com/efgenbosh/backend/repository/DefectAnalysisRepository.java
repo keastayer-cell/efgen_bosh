@@ -6,4 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface DefectAnalysisRepository extends JpaRepository<DefectAnalysis, Long> {
     Optional<DefectAnalysis> findByCar_Id(Long carId);
+    void deleteByCar_Id(Long carId);
 }

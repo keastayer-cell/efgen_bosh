@@ -8,6 +8,8 @@ import com.efgenbosh.backend.dto.car.PartRequest;
 import com.efgenbosh.backend.dto.car.PartResponse;
 import com.efgenbosh.backend.repository.CarRepository;
 import com.efgenbosh.backend.repository.PartRepository;
+import com.efgenbosh.backend.repository.WorkOrderRepository;
+import com.efgenbosh.backend.repository.DefectAnalysisRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,10 +23,14 @@ import java.util.List;
 public class CarService {
     private final CarRepository cars;
     private final PartRepository parts;
+    private final WorkOrderRepository workOrders;
+    private final DefectAnalysisRepository defectAnalyses;
 
-    public CarService(CarRepository cars, PartRepository parts) {
+    public CarService(CarRepository cars, PartRepository parts, WorkOrderRepository workOrders, DefectAnalysisRepository defectAnalyses) {
         this.cars = cars;
         this.parts = parts;
+        this.workOrders = workOrders;
+        this.defectAnalyses = defectAnalyses;
     }
 
     @Transactional
@@ -68,6 +74,14 @@ public class CarService {
         car.setAcceptedAt(accepted ? LocalDate.now() : null);
         car.touch();
         return response(car);
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        car(id);
+        defectAnalyses.deleteByCar_Id(id);
+        workOrders.deleteByCar_Id(id);
+        cars.deleteById(id);
     }
 
     @Transactional

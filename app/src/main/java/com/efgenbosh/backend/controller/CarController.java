@@ -45,6 +45,10 @@ public class CarController {
         return service.update(id, request);
     }
 
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) { service.delete(id); }
+
     @PatchMapping("/{id}/delivery")
     public CarResponse setDelivered(@PathVariable Long id, @RequestParam boolean delivered) {
         return service.setDelivered(id, delivered);
