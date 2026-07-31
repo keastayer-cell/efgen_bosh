@@ -73,22 +73,24 @@ public class DirectoryController {
     @GetMapping("/insurers")
     public List<DirectoryItemResponse> insurers() {
         return insurers.findAllByActiveTrueOrderBySortOrderAscNameAsc().stream()
-            .map(item -> new DirectoryItemResponse(item.getId(), item.getName())).toList();
+            .map(item -> new DirectoryItemResponse(item.getId(), item.getName(), item.getLegalDetails())).toList();
     }
 
     @PostMapping("/insurers")
     @ResponseStatus(HttpStatus.CREATED)
     public DirectoryItemResponse createInsurer(@Valid @RequestBody DirectoryItemRequest request) {
-        Insurer item = new Insurer(); item.setName(request.name().trim());
+        Insurer item = new Insurer(); item.setName(request.name().trim()); item.setLegalDetails(value(request.legalDetails()));
         item = insurers.save(item);
-        return new DirectoryItemResponse(item.getId(), item.getName());
+        return new DirectoryItemResponse(item.getId(), item.getName(), item.getLegalDetails());
     }
 
     @PutMapping("/insurers/{id}")
     public DirectoryItemResponse updateInsurer(@PathVariable Long id, @Valid @RequestBody DirectoryItemRequest request) {
         Insurer item = insurers.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Страховая не найдена."));
         item.setName(request.name().trim());
-        return new DirectoryItemResponse(item.getId(), insurers.save(item).getName());
+        item.setLegalDetails(value(request.legalDetails()));
+        item = insurers.save(item);
+        return new DirectoryItemResponse(item.getId(), item.getName(), item.getLegalDetails());
     }
 
     @DeleteMapping("/insurers/{id}")
@@ -98,7 +100,7 @@ public class DirectoryController {
     @GetMapping("/suppliers")
     public List<DirectoryItemResponse> suppliers() {
         return suppliers.findAllByActiveTrueOrderBySortOrderAscNameAsc().stream()
-            .map(item -> new DirectoryItemResponse(item.getId(), item.getName())).toList();
+            .map(item -> new DirectoryItemResponse(item.getId(), item.getName(), "")).toList();
     }
 
     @PostMapping("/suppliers")
@@ -106,14 +108,14 @@ public class DirectoryController {
     public DirectoryItemResponse createSupplier(@Valid @RequestBody DirectoryItemRequest request) {
         Supplier item = new Supplier(); item.setName(request.name().trim());
         item = suppliers.save(item);
-        return new DirectoryItemResponse(item.getId(), item.getName());
+        return new DirectoryItemResponse(item.getId(), item.getName(), "");
     }
 
     @PutMapping("/suppliers/{id}")
     public DirectoryItemResponse updateSupplier(@PathVariable Long id, @Valid @RequestBody DirectoryItemRequest request) {
         Supplier item = suppliers.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Поставщик не найден."));
         item.setName(request.name().trim());
-        return new DirectoryItemResponse(item.getId(), suppliers.save(item).getName());
+        return new DirectoryItemResponse(item.getId(), suppliers.save(item).getName(), "");
     }
 
     @DeleteMapping("/suppliers/{id}")
@@ -123,7 +125,7 @@ public class DirectoryController {
     @GetMapping("/shifts")
     public List<DirectoryItemResponse> shifts() {
         return shifts.findAllByActiveTrueOrderBySortOrderAscNameAsc().stream()
-            .map(item -> new DirectoryItemResponse(item.getId(), item.getName())).toList();
+            .map(item -> new DirectoryItemResponse(item.getId(), item.getName(), "")).toList();
     }
 
     @PostMapping("/shifts")
@@ -131,14 +133,14 @@ public class DirectoryController {
     public DirectoryItemResponse createShift(@Valid @RequestBody DirectoryItemRequest request) {
         Shift item = new Shift(); item.setName(request.name().trim());
         item = shifts.save(item);
-        return new DirectoryItemResponse(item.getId(), item.getName());
+        return new DirectoryItemResponse(item.getId(), item.getName(), "");
     }
 
     @PutMapping("/shifts/{id}")
     public DirectoryItemResponse updateShift(@PathVariable Long id, @Valid @RequestBody DirectoryItemRequest request) {
         Shift item = shifts.findById(id).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "Смена не найдена."));
         item.setName(request.name().trim());
-        return new DirectoryItemResponse(item.getId(), shifts.save(item).getName());
+        return new DirectoryItemResponse(item.getId(), shifts.save(item).getName(), "");
     }
 
     @DeleteMapping("/shifts/{id}")
@@ -149,7 +151,7 @@ public class DirectoryController {
     public List<WorkCatalogItemResponse> works() {
         return workCatalog.findAllByActiveTrueOrderBySortOrderAscNameAsc().stream()
             .map(item -> new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(),
-                item.getCategory().getName(), item.getDefaultUnit()))
+                item.getCategory().getName(), item.getDefaultUnit(), item.getNormHours()))
             .toList();
     }
 
@@ -167,9 +169,10 @@ public class DirectoryController {
         item.setCode(request.code().trim());
         item.setName(request.name().trim());
         item.setDefaultUnit(request.defaultUnit().trim());
+        item.setNormHours(request.normHours());
         item = workCatalog.save(item);
         return new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(),
-            categoryName, item.getDefaultUnit());
+            categoryName, item.getDefaultUnit(), item.getNormHours());
     }
 
     @DeleteMapping("/works/{id}")
@@ -183,8 +186,8 @@ public class DirectoryController {
         var category = workCategories.findByNameIgnoreCase(categoryName).orElseGet(() -> {
             var created = new com.efgenbosh.backend.domain.WorkCategory(); created.setName(categoryName); return workCategories.save(created);
         });
-        item.setCategory(category); item.setCode(request.code().trim()); item.setName(request.name().trim()); item.setDefaultUnit(request.defaultUnit().trim());
+        item.setCategory(category); item.setCode(request.code().trim()); item.setName(request.name().trim()); item.setDefaultUnit(request.defaultUnit().trim()); item.setNormHours(request.normHours());
         item = workCatalog.save(item);
-        return new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(), categoryName, item.getDefaultUnit());
+        return new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(), categoryName, item.getDefaultUnit(), item.getNormHours());
     }
 }

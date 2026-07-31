@@ -47,6 +47,12 @@ const workOrderRegistry = ref([])
 const workOrderRegistryBusy = ref(false)
 const workOrderRegistryError = ref('')
 const directoriesVisible = ref(false)
+const settingsTab = ref('directories')
+const settingsNewInsurer = ref('')
+const settingsNewSupplier = ref('')
+const settingsNewWork = ref({ name: '', normHours: 1 })
+const settingsNewMaster = ref({ code: '', shortName: '' })
+const settingsNewCounterparty = ref({ name: '', inn: '', phone: '', address: '', note: '' })
 const contractorVisible = ref(false)
 const editingContractor = ref(null)
 const contractorForm = ref({ code: '', shortName: '', fullName: '', signerName: '', inn: '', ogrnip: '', address: '', bankName: '', bankInn: '', bankKpp: '', bik: '', correspondentAccount: '', settlementAccount: '' })
@@ -263,6 +269,46 @@ function openDirectories() {
   modal.value = null
   directoryForm.value = { name: '', code: '', categoryName: '', defaultUnit: 'н/ч', inn: '', address: '', phone: '', note: '' }
   directoriesVisible.value = true
+}
+
+async function addSettingsItem(type, name) {
+  if (!name.trim()) return
+  try { await requestJson(`/api/v1/directories/${type}`, { method: 'POST', body: JSON.stringify({ name: name.trim(), legalDetails: type === 'insurers' ? directoryForm.value.note : '' }) }); await loadDirectories(); if (type === 'insurers') { settingsNewInsurer.value = ''; directoryForm.value.note = '' } else settingsNewSupplier.value = ''; showToast('Элемент справочника добавлен') } catch (error) { showToast(error.message) }
+}
+
+async function removeSettingsItem(type, item) {
+  if (!window.confirm(`Удалить «${item.name}»?`)) return
+  try { await requestJson(`/api/v1/directories/${type}/${item.id}`, { method: 'DELETE' }); await loadDirectories(); showToast('Элемент удалён') } catch (error) { showToast(error.message) }
+}
+
+async function saveSettingsCounterparty() {
+  if (!settingsNewCounterparty.value.name.trim()) return
+  try { await requestJson('/api/v1/counterparties', { method: 'POST', body: JSON.stringify(settingsNewCounterparty.value) }); await loadDirectories(); settingsNewCounterparty.value = { name: '', inn: '', phone: '', address: '', note: '' }; showToast('Контрагент сохранён') } catch (error) { showToast(error.message) }
+}
+
+async function saveSettingsWork() {
+  if (!settingsNewWork.value.name.trim()) return
+  try { await requestJson('/api/v1/directories/works', { method: 'POST', body: JSON.stringify({ code: `WORK-${Date.now()}`, name: settingsNewWork.value.name.trim(), categoryName: 'Кузовные работы', defaultUnit: 'н/ч', normHours: Number(settingsNewWork.value.normHours) || 1 }) }); await loadDirectories(); settingsNewWork.value = { name: '', normHours: 1 }; showToast('Работа добавлена') } catch (error) { showToast(error.message) }
+}
+
+async function saveSettingsMaster() {
+  if (!settingsNewMaster.value.shortName.trim() || !settingsNewMaster.value.code.trim()) return
+  try { await requestJson('/api/v1/contractors', { method: 'POST', body: JSON.stringify({ code: settingsNewMaster.value.code.trim(), shortName: settingsNewMaster.value.shortName.trim(), fullName: settingsNewMaster.value.shortName.trim() }) }); await loadDirectories(); settingsNewMaster.value = { code: '', shortName: '' }; showToast('Мастер добавлен') } catch (error) { showToast(error.message) }
+}
+
+async function removeSettingsMaster(item) {
+  if (!window.confirm(`Удалить «${item.shortName}»?`)) return
+  try { await requestJson(`/api/v1/contractors/${item.id}`, { method: 'DELETE' }); await loadDirectories(); showToast('Мастер удалён') } catch (error) { showToast(error.message) }
+}
+
+async function removeSettingsWork(item) {
+  if (!window.confirm(`Удалить «${item.name}»?`)) return
+  try { await requestJson(`/api/v1/directories/works/${item.id}`, { method: 'DELETE' }); await loadDirectories(); showToast('Работа удалена') } catch (error) { showToast(error.message) }
+}
+
+async function removeSettingsCounterparty(item) {
+  if (!window.confirm(`Удалить «${item.name}»?`)) return
+  try { await requestJson(`/api/v1/counterparties/${item.id}`, { method: 'DELETE' }); await loadDirectories(); showToast('Контрагент удалён') } catch (error) { showToast(error.message) }
 }
 
 function openDirectoryEdit(item) {
@@ -793,6 +839,8 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 
     <div v-if="modal" class="stub-overlay" @click.self="modal = null"><section class="stub-modal"><button class="icon-button" aria-label="Закрыть" @click="modal = null">×</button><p class="eyebrow">Заглушка раздела</p><h2>{{ modal }}</h2><p>Внешний вид и место действия уже подготовлены. Реальная загрузка и сохранение данных будут подключены к backend следующим этапом.</p><button class="button button-primary" @click="modal = null">Понятно</button></section></div>
     <div v-if="photosVisible" class="stub-overlay" @click.self="photosVisible = false"><section class="data-modal photos-modal"><button class="icon-button" aria-label="Закрыть" @click="photosVisible = false">×</button><p class="eyebrow">Документы автомобиля</p><h2>Фото автомобиля</h2><p class="modal-subtitle">{{ photosCar?.number }} · {{ photosCar?.vehicle }}</p><div v-if="photosBusy" class="empty-state">Загружаем фотографии…</div><div v-else class="car-photo-grid"><div v-for="photo in carPhotos" :key="photo.id || photo.dataUrl" class="car-photo-card"><img :src="photo.dataUrl" :alt="photo.fileName || 'Фото автомобиля'" /><div><small>{{ photo.fileName }}</small><button type="button" class="link-button danger-link" @click="deleteCarPhoto(photo)">Удалить</button></div></div><p v-if="!carPhotos.length" class="empty-state">Фотографии пока не добавлены.</p></div></section></div>
+    <div v-if="directoriesVisible" class="settings-overlay" @click.self="directoriesVisible = false"><section class="settings-screen"><button class="icon-button" aria-label="Закрыть" @click="directoriesVisible = false">×</button><p class="eyebrow">Управление программой</p><h2>Настройки</h2><p class="settings-subtitle">Справочники, контрагенты и рабочие параметры.</p><nav class="settings-tabs"><button type="button" :class="{ 'is-active': settingsTab === 'directories' }" @click="settingsTab = 'directories'">Справочники</button><button type="button" :class="{ 'is-active': settingsTab === 'counterparties' }" @click="settingsTab = 'counterparties'">Контрагенты</button><button type="button" disabled>Резервные копии</button><button type="button" disabled>История</button><button type="button" disabled>Безопасность</button></nav><template v-if="settingsTab === 'directories'"><div class="settings-section-head"><div><h3>Справочники</h3><p>Эти значения используются в карточках автомобилей, запчастях и документах.</p></div></div><div class="settings-directory-grid"><section class="settings-card"><div class="settings-card-head"><div><h3>Страховые компании</h3><p>Название для выбора в карточке автомобиля.</p></div><button type="button" class="settings-add" @click="addSettingsItem('insurers', settingsNewInsurer)">＋ Добавить</button></div><div class="settings-add-row"><input v-model="settingsNewInsurer" placeholder="Название страховой" @keyup.enter="addSettingsItem('insurers', settingsNewInsurer)" /></div><div class="settings-list"><div v-for="item in insurers" :key="item.id" class="settings-list-row"><input :value="item.name" @change="openDirectoryEdit(item); directoryType = 'insurers'; createDirectoryItem()" /><button type="button" class="settings-delete" @click="removeSettingsItem('insurers', item)">×</button></div></div></section><section class="settings-card"><div class="settings-card-head"><div><h3>Поставщики</h3><p>Выбор в строках запчастей.</p></div><button type="button" class="settings-add" @click="addSettingsItem('suppliers', settingsNewSupplier)">＋ Добавить</button></div><div class="settings-add-row"><input v-model="settingsNewSupplier" placeholder="Название поставщика" @keyup.enter="addSettingsItem('suppliers', settingsNewSupplier)" /></div><div class="settings-list"><div v-for="item in suppliers" :key="item.id" class="settings-list-row"><input :value="item.name" @change="openDirectoryEdit(item); directoryType = 'suppliers'; createDirectoryItem()" /><button type="button" class="settings-delete" @click="removeSettingsItem('suppliers', item)">×</button></div></div></section></div></template><template v-else><div class="settings-section-head"><div><h3>Контрагенты</h3><p>Контрагенты используются в генераторе документов для автомобилей вне реестра.</p></div></div><div class="settings-counterparty-grid"><form class="settings-card settings-counterparty-form" @submit.prevent="saveSettingsCounterparty"><h3>Новый контрагент</h3><label><span>Наименование или ФИО *</span><input v-model="settingsNewCounterparty.name" required placeholder="Например, ООО «Автотранс»" /></label><div class="settings-two-fields"><label><span>ИНН</span><input v-model="settingsNewCounterparty.inn" placeholder="ИНН организации или ИП" /></label><label><span>Телефон</span><input v-model="settingsNewCounterparty.phone" placeholder="+7 999 000-00-00" /></label></div><label><span>Адрес</span><input v-model="settingsNewCounterparty.address" placeholder="Город, улица, дом" /></label><label><span>Комментарий</span><input v-model="settingsNewCounterparty.note" placeholder="Необязательная внутренняя заметка" /></label><button class="button button-primary" type="submit">Сохранить контрагента</button></form><section class="settings-card"><h3>Сохранённые контрагенты</h3><p>{{ counterparties.length }} записей</p><div class="settings-list"><div v-for="item in counterparties" :key="item.id" class="counterparty-row"><div><strong>{{ item.name }}</strong><small>ИНН {{ item.inn || 'не указан' }}</small><small>{{ item.address || 'Адрес не указан' }}</small></div><div><button type="button" class="settings-edit" @click="openDirectoryEdit(item); directoryType = 'counterparties'">Изменить</button><button type="button" class="settings-delete-text" @click="removeSettingsCounterparty(item)">Удалить</button></div></div></div></section></div></template></section></div>
+    <div v-if="directoriesVisible" class="settings-overlay-v2" @click.self="directoriesVisible = false"><section class="settings-screen"><button class="icon-button" aria-label="Закрыть" @click="directoriesVisible = false">×</button><p class="eyebrow">Управление программой</p><h2>Настройки</h2><p class="settings-subtitle">Справочники, контрагенты, мастера и рабочие параметры.</p><nav class="settings-tabs"><button type="button" :class="{ 'is-active': settingsTab === 'directories' }" @click="settingsTab = 'directories'">Справочники</button><button type="button" :class="{ 'is-active': settingsTab === 'counterparties' }" @click="settingsTab = 'counterparties'">Контрагенты</button><button type="button" disabled>Резервные копии</button><button type="button" disabled>История</button><button type="button" disabled>Безопасность</button></nav><template v-if="settingsTab === 'directories'"><div class="settings-section-head"><div><h3>Справочники</h3><p>Значения используются в карточках автомобилей, запчастях и документах.</p></div></div><div class="settings-directory-grid"><section class="settings-card"><div class="settings-card-head"><div><h3>Страховые компании</h3><p>Название и адрес/реквизиты одной строкой.</p></div></div><div class="settings-add-row settings-insurer-add"><input v-model="settingsNewInsurer" placeholder="Название страховой" /><input v-model="directoryForm.note" placeholder="Адрес и реквизиты" /><button type="button" class="settings-add" @click="addSettingsItem('insurers', settingsNewInsurer)">＋ Добавить</button></div><div class="settings-list"><div v-for="item in insurers" :key="item.id" class="settings-list-row"><input :value="item.name" /><input :value="item.legalDetails || ''" placeholder="Адрес и реквизиты" /><button type="button" class="settings-delete" @click="removeSettingsItem('insurers', item)">×</button></div></div></section><section class="settings-card"><div class="settings-card-head"><div><h3>Поставщики</h3><p>Только названия для строк запчастей.</p></div></div><div class="settings-add-row"><input v-model="settingsNewSupplier" placeholder="Название поставщика" /><button type="button" class="settings-add" @click="addSettingsItem('suppliers', settingsNewSupplier)">＋ Добавить</button></div><div class="settings-list"><div v-for="item in suppliers" :key="item.id" class="settings-list-row"><input :value="item.name" /><button type="button" class="settings-delete" @click="removeSettingsItem('suppliers', item)">×</button></div></div></section><section class="settings-card"><div class="settings-card-head"><div><h3>Работы</h3><p>Название и расшифровка в нормо-часах.</p></div></div><div class="settings-add-row"><input v-model="settingsNewWork.name" placeholder="Название работы" /><input v-model.number="settingsNewWork.normHours" type="number" min="0" step="0.01" placeholder="Нормо-часы" /><button type="button" class="settings-add" @click="saveSettingsWork">＋ Добавить</button></div><div class="settings-list"><div v-for="item in workCatalog" :key="item.id" class="settings-list-row"><span>{{ item.name }}</span><strong>{{ item.normHours || 0 }} н/ч</strong><button type="button" class="settings-delete" @click="removeSettingsWork(item)">×</button></div></div></section><section class="settings-card"><div class="settings-card-head"><div><h3>Исполнители / мастера</h3><p>Мастера, доступные в карточке автомобиля.</p></div></div><div class="settings-add-row"><input v-model="settingsNewMaster.code" placeholder="Код" /><input v-model="settingsNewMaster.shortName" placeholder="Имя мастера" /><button type="button" class="settings-add" @click="saveSettingsMaster">＋ Добавить</button></div><div class="settings-list"><div v-for="item in contractors" :key="item.id" class="settings-list-row"><span>{{ item.shortName }}</span><code>{{ item.code }}</code><button type="button" class="settings-delete" @click="removeSettingsMaster(item)">×</button></div></div></section></div></template><template v-else><div class="settings-section-head"><div><h3>Контрагенты</h3><p>Контрагенты используются в генераторе документов для автомобилей вне реестра.</p></div></div><div class="settings-counterparty-grid"><form class="settings-card settings-counterparty-form" @submit.prevent="saveSettingsCounterparty"><h3>Новый контрагент</h3><p>Наименование или ФИО *</p><input v-model="settingsNewCounterparty.name" required placeholder="Например, ООО «Автотранс»" /><div class="settings-two-fields"><label><span>ИНН</span><input v-model="settingsNewCounterparty.inn" placeholder="ИНН организации или ИП" /></label><label><span>Телефон</span><input v-model="settingsNewCounterparty.phone" placeholder="+7 999 000-00-00" /></label></div><label><span>Адрес</span><input v-model="settingsNewCounterparty.address" placeholder="Город, улица, дом" /></label><label><span>Комментарий</span><input v-model="settingsNewCounterparty.note" placeholder="Необязательная внутренняя заметка" /></label><button class="button button-primary" type="submit">Сохранить контрагента</button></form><section class="settings-card"><h3>Сохранённые контрагенты</h3><p>{{ counterparties.length }} записей</p><div class="settings-list"><div v-for="item in counterparties" :key="item.id" class="counterparty-row"><div><strong>{{ item.name }}</strong><small>ИНН {{ item.inn || 'не указан' }}</small><small>{{ item.address || 'Адрес не указан' }}</small></div><button type="button" class="settings-delete-text" @click="removeSettingsCounterparty(item)">Удалить</button></div></div></section></div></template></section></div>
     <div v-if="toast" class="toast">{{ toast }}</div>
   </template>
     <div v-if="workOrderRegistryVisible" class="stub-overlay" @click.self="workOrderRegistryVisible = false"><section class="data-modal registry-modal"><button class="icon-button" aria-label="Закрыть" @click="workOrderRegistryVisible = false">×</button><p class="eyebrow">Реестр документов</p><h2>Заказ-наряды</h2><div class="registry-actions"><button class="button button-cloud dark-button" type="button" @click="downloadWorkOrderCsv" :disabled="!workOrderRegistry.length">Скачать CSV</button></div><div v-if="workOrderRegistryBusy" class="empty-state">Загружаем реестр…</div><div v-else-if="workOrderRegistryError" class="empty-state">{{ workOrderRegistryError }}</div><div v-else class="registry-table"><div class="registry-row registry-head"><span>№</span><span>Автомобиль</span><span>Заказчик</span><span>Дата</span><span>Статус</span><span>Итого</span><span>Документы</span></div><div v-for="item in workOrderRegistry" :key="item.id" class="registry-row"><span>{{ item.orderNumber || `#${item.id}` }}</span><span>{{ item.vehicleName || 'Без автомобиля' }}<small>{{ item.registrationNumber || '—' }}</small></span><span>{{ item.customer || '—' }}</span><span>{{ item.documentDate || '—' }}</span><span>{{ item.status }}</span><strong>{{ Number(item.total || 0).toFixed(2) }}</strong><span>{{ item.invoiceNumber || '—' }} · {{ item.actNumber || '—' }}</span></div><p v-if="!workOrderRegistry.length" class="empty-state">Заказ-нарядов пока нет.</p></div></section></div>
@@ -859,6 +907,39 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
 .extended-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
 .extended-filters select { height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--soft); font-size: 11px; }
 .overdue-filter { display: flex; gap: 5px; align-items: center; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.settings-overlay { display: none; }
+.settings-overlay-v2 { position: fixed; inset: 0; z-index: 40; overflow: auto; padding: 36px; background: #eef4f2; }
+.settings-screen { position: relative; width: min(1800px, 100%); min-height: calc(100vh - 72px); margin: 0 auto; padding: 16px 0 60px; }
+.settings-screen h2 { margin: 0; color: var(--ink); font-size: 34px; }
+.settings-subtitle, .settings-section-head p, .settings-card p { color: var(--muted); }
+.settings-tabs { display: flex; gap: 6px; margin: 34px -36px 30px; padding: 8px 36px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #f5f9f7; }
+.settings-tabs button { padding: 14px 18px; border: 0; border-radius: 12px; color: var(--muted); background: transparent; font-weight: 800; }
+.settings-tabs button.is-active { color: var(--brand); background: white; box-shadow: 0 3px 14px rgb(20 63 56 / 10%); }
+.settings-tabs button:disabled { opacity: .48; cursor: not-allowed; }
+.settings-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.settings-section-head h3, .settings-card h3 { margin: 0 0 6px; font-size: 23px; }
+.settings-directory-grid, .settings-counterparty-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.settings-card { min-width: 0; padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: rgb(255 255 255 / 88%); box-shadow: 0 8px 25px rgb(20 63 56 / 5%); }
+.settings-card-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 15px; }
+.settings-card-head p { margin: 0; font-size: 12px; }
+.settings-add, .settings-edit { padding: 10px 14px; border: 0; border-radius: 10px; color: var(--brand); background: var(--soft); font-weight: 800; white-space: nowrap; }
+.settings-add-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.settings-add-row input, .settings-list-row input, .settings-card label input, .settings-counterparty-form > input { min-width: 0; width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.settings-add-row button { flex: 0 0 auto; }
+.settings-list { display: grid; gap: 8px; max-height: 420px; overflow: auto; }
+.settings-list-row { display: flex; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.settings-list-row > span { flex: 1; font-weight: 700; }
+.settings-list-row > strong { color: var(--muted); white-space: nowrap; }
+.settings-list-row code { color: var(--muted); }
+.settings-delete, .settings-delete-text { flex: 0 0 auto; border: 0; border-radius: 9px; color: #c44b43; background: #fff0ef; font-size: 20px; }
+.settings-delete-text { padding: 10px 12px; font-size: 12px; font-weight: 800; }
+.settings-two-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-counterparty-form { display: grid; gap: 14px; }
+.settings-counterparty-form label { display: grid; gap: 6px; color: var(--muted); font-weight: 750; }
+.settings-counterparty-form .button { justify-self: end; margin-top: 12px; }
+.counterparty-row { display: flex; justify-content: space-between; gap: 15px; align-items: center; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.counterparty-row strong, .counterparty-row small { display: block; }
+.counterparty-row small { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .photos-modal { width: min(960px, 100%); }
 .photo-upload-button, .new-car-photo-toolbar .button { display: inline-flex; position: relative; align-items: center; gap: 8px; }
 .photo-file-input { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; opacity: 0; }
