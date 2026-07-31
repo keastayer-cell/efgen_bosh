@@ -138,6 +138,7 @@ npm run build
 ## Документация
 
 - [Этап 0](docs/stage-0-foundation.md)
+- [Этап 1.1: база пользователей и ролей](docs/stage-1-auth-database.md)
 - [Архитектурное решение](docs/adr/0001-modular-monolith.md)
 - [Правила структуры](docs/project-conventions.md)
 - [Зафиксированные бизнес-правила](docs/business-rules.md)

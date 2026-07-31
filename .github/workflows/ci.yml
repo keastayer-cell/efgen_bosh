@@ -86,7 +86,7 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
           DB_NAME: efgen_bosh_ci
-          DB_SCHEMA: public
+          DB_SCHEMA: work
           DB_USER: efgen_bosh
           DB_PASSWORD: efgen_bosh_ci_password
         run: bash scripts/verify-migrations-postgres.sh

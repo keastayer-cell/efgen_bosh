@@ -11,8 +11,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    default-schema: ${DB_SCHEMA:public}
-    schemas: ${DB_SCHEMA:public}
+    default-schema: public
+    schemas: public,${DB_SCHEMA:work}
 
   jpa:
     open-in-view: false
