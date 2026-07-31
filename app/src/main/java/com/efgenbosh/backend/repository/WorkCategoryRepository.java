@@ -2,5 +2,8 @@ package com.efgenbosh.backend.repository;
 
 import com.efgenbosh.backend.domain.WorkCategory;
 import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.Optional;
 
-public interface WorkCategoryRepository extends JpaRepository<WorkCategory, Long> { }
+public interface WorkCategoryRepository extends JpaRepository<WorkCategory, Long> {
+    Optional<WorkCategory> findByNameIgnoreCase(String name);
+}

@@ -25,6 +25,7 @@ const toast = ref('')
 const carFormVisible = ref(false)
 const partFormVisible = ref(false)
 const workOrderVisible = ref(false)
+const directoriesVisible = ref(false)
 const editingCar = ref(null)
 const editingPart = ref(null)
 const selectedCar = ref(null)
@@ -32,6 +33,8 @@ const selectedWorkOrderCar = ref(null)
 const workOrder = ref(null)
 const workOrderBusy = ref(false)
 const workOrderError = ref('')
+const directoryType = ref('insurers')
+const directoryForm = ref({ name: '', code: '', categoryName: '', defaultUnit: 'н/ч' })
 const carForm = ref(emptyCarForm())
 const partForm = ref(emptyPartForm())
 
@@ -110,6 +113,31 @@ function openCarForm() {
   editingCar.value = null
   carForm.value = emptyCarForm()
   carFormVisible.value = true
+}
+
+function openDirectories() {
+  modal.value = null
+  directoryForm.value = { name: '', code: '', categoryName: '', defaultUnit: 'н/ч' }
+  directoriesVisible.value = true
+}
+
+async function createDirectoryItem() {
+  try {
+    if (directoryType.value === 'works') {
+      await requestJson('/api/v1/directories/works', {
+        method: 'POST', body: JSON.stringify(directoryForm.value),
+      })
+    } else {
+      await requestJson(`/api/v1/directories/${directoryType.value}`, {
+        method: 'POST', body: JSON.stringify({ name: directoryForm.value.name }),
+      })
+    }
+    await loadDirectories()
+    directoryForm.value = { name: '', code: '', categoryName: '', defaultUnit: 'н/ч' }
+    showToast('Элемент справочника добавлен')
+  } catch (error) {
+    showToast(error.message)
+  }
 }
 
 function openCarEdit(car) {
@@ -342,6 +370,10 @@ async function logout() {
 }
 
 function openStub(name) {
+  if (name === 'Настройки') {
+    openDirectories()
+    return
+  }
   modal.value = name
 }
 
@@ -431,6 +463,8 @@ onMounted(() => {
 
     <div v-if="partFormVisible" class="stub-overlay" @click.self="partFormVisible = false"><form class="data-modal compact-modal" @submit.prevent="savePart"><button type="button" class="icon-button" aria-label="Закрыть" @click="partFormVisible = false">×</button><p class="eyebrow">Заказ запчасти</p><h2>{{ editingPart ? 'Изменить деталь' : 'Добавить деталь' }}</h2><p class="modal-subtitle">{{ selectedCar?.number }} · {{ selectedCar?.vehicle }}</p><div class="data-form-grid"><label><span>Деталь</span><input v-model="partForm.name" required placeholder="Бампер передний" /></label><label><span>Артикул</span><input v-model="partForm.article" placeholder="604A124500" /></label><label><span>Поставщик</span><select v-model="partForm.supplierId"><option value="">Не выбран</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Ожидаемая дата</span><input v-model="partForm.expectedDate" type="date" /></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="partFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingPart ? 'Сохранить изменения' : 'Добавить деталь' }}</button></div></form></div>
 
+    <div v-if="directoriesVisible" class="stub-overlay" @click.self="directoriesVisible = false"><section class="data-modal directory-modal"><button class="icon-button" aria-label="Закрыть" @click="directoriesVisible = false">×</button><p class="eyebrow">Настройки</p><h2>Справочники</h2><div class="directory-tabs"><button type="button" :class="{ 'is-active': directoryType === 'insurers' }" @click="directoryType = 'insurers'">Страховые</button><button type="button" :class="{ 'is-active': directoryType === 'suppliers' }" @click="directoryType = 'suppliers'">Поставщики</button><button type="button" :class="{ 'is-active': directoryType === 'shifts' }" @click="directoryType = 'shifts'">Смены</button><button type="button" :class="{ 'is-active': directoryType === 'works' }" @click="directoryType = 'works'">Работы</button></div><form class="data-form-grid" @submit.prevent="createDirectoryItem"><label v-if="directoryType === 'works'"><span>Код работы</span><input v-model="directoryForm.code" required placeholder="BODY-001" /></label><label><span>{{ directoryType === 'works' ? 'Название работы' : 'Название' }}</span><input v-model="directoryForm.name" required placeholder="Название элемента" /></label><label v-if="directoryType === 'works'"><span>Категория</span><input v-model="directoryForm.categoryName" required placeholder="Кузовные работы" /></label><label v-if="directoryType === 'works'"><span>Единица</span><input v-model="directoryForm.defaultUnit" required placeholder="н/ч" /></label><div class="modal-actions form-wide"><button class="button button-primary" type="submit">Добавить в справочник</button></div></form><div class="directory-list"><div v-for="item in (directoryType === 'insurers' ? insurers : directoryType === 'suppliers' ? suppliers : directoryType === 'shifts' ? shifts : workCatalog)" :key="item.id" class="directory-item"><span>{{ item.name }}<small v-if="directoryType === 'works'">{{ item.categoryName }} · {{ item.defaultUnit }}</small></span><code v-if="directoryType === 'works'">{{ item.code }}</code></div><p v-if="!(directoryType === 'insurers' ? insurers : directoryType === 'suppliers' ? suppliers : directoryType === 'shifts' ? shifts : workCatalog).length" class="empty-state">Справочник пока пуст.</p></div></section></div>
+
     <div v-if="workOrderVisible" class="stub-overlay" @click.self="workOrderVisible = false"><section class="data-modal work-order-modal"><button class="icon-button" aria-label="Закрыть" @click="workOrderVisible = false">×</button><p class="eyebrow">Рабочие данные</p><h2>Заказ-наряд · №{{ selectedWorkOrderCar?.number }}</h2><p class="modal-subtitle">{{ selectedWorkOrderCar?.vehicle }} · {{ selectedWorkOrderCar?.registration }}</p><div v-if="workOrderBusy" class="empty-state">Загружаем заказ-наряд…</div><div v-else-if="workOrderError" class="empty-state">{{ workOrderError }}</div><template v-else-if="workOrder"><div class="data-form-grid work-order-meta"><label><span>Дата документа</span><input v-model="workOrder.documentDate" type="date" /></label><label><span>Заказчик</span><input v-model="workOrder.customer" placeholder="ФИО или организация" /></label></div><div class="work-order-lines"><div class="work-order-line work-order-line-head"><span>Категория</span><span>Работа</span><span>Ед.</span><span>Кол-во</span><span>Цена</span><span>Сумма</span><span></span></div><div v-for="(line, index) in workOrder.lines" :key="line.id || `new-${index}`" class="work-order-line"><select v-model="line.catalogId" @change="applyCatalogLine(line)"><option value="">Своя работа</option><option v-for="item in workCatalog" :key="item.id" :value="String(item.id)">{{ item.categoryName }} · {{ item.name }}</option></select><input v-model="line.name" required placeholder="Ремонт двери" /><input v-model="line.unit" placeholder="шт." /><input v-model.number="line.quantity" type="number" min="0.001" step="0.001" /><input v-model.number="line.price" type="number" min="0" step="0.01" /><strong>{{ ((Number(line.quantity) || 0) * (Number(line.price) || 0)).toFixed(2) }}</strong><button type="button" class="icon-button small-icon" aria-label="Удалить строку" @click="removeWorkOrderLine(index)">×</button></div><button type="button" class="link-button" @click="addWorkOrderLine">＋ Добавить работу</button></div><div class="work-order-parts"><div class="work-order-line work-order-line-head"><span>Запчасть</span><span>Артикул</span><span>Кол-во</span><span>Цена</span><span>Сумма</span><span></span></div><div v-for="(line, index) in workOrder.partLines" :key="line.id || `part-new-${index}`" class="work-order-part-line"><strong>{{ line.name }}</strong><span>{{ line.article || "—" }}</span><input v-model.number="line.quantity" type="number" min="0.001" step="0.001" /><input v-model.number="line.price" type="number" min="0" step="0.01" /><strong>{{ ((Number(line.quantity) || 0) * (Number(line.price) || 0)).toFixed(2) }}</strong><button type="button" class="icon-button small-icon" aria-label="Удалить строку запчасти" @click="removeWorkOrderPartLine(index)">×</button></div><div class="work-order-part-picker"><span>Добавить запчасть:</span><button v-for="part in selectedWorkOrderCar.parts" :key="part.id" type="button" class="link-button" :disabled="workOrder.partLines.some((line) => line.partId === part.id)" @click="addWorkOrderPartLine(part)">{{ part.name }}</button></div></div><div class="work-order-total">Итого: <strong>{{ workOrderTotal().toFixed(2) }}</strong></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="workOrderVisible = false">Закрыть</button><button class="button button-primary" @click="saveWorkOrder">Сохранить заказ-наряд</button></div></template></section></div>
 
     <div v-if="modal" class="stub-overlay" @click.self="modal = null"><section class="stub-modal"><button class="icon-button" aria-label="Закрыть" @click="modal = null">×</button><p class="eyebrow">Заглушка раздела</p><h2>{{ modal }}</h2><p>Внешний вид и место действия уже подготовлены. Реальная загрузка и сохранение данных будут подключены к backend следующим этапом.</p><button class="button button-primary" @click="modal = null">Понятно</button></section></div>
@@ -469,4 +503,12 @@ onMounted(() => {
 .work-order-part-picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; color: var(--muted); font-size: 12px; }
 .small-icon { width: 30px; height: 30px; }
 .work-order-total { margin-top: 18px; text-align: right; font-size: 16px; }
+.directory-modal { width: min(760px, 100%); }
+.directory-tabs { display: flex; gap: 6px; margin: 6px 0 20px; border-bottom: 1px solid var(--line); }
+.directory-tabs button { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font-size: 12px; font-weight: 750; }
+.directory-tabs button.is-active { color: var(--brand); border-bottom-color: var(--accent); }
+.directory-list { display: grid; gap: 7px; max-height: 260px; overflow: auto; margin-top: 22px; }
+.directory-item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-size: 13px; }
+.directory-item small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.directory-item code { color: var(--muted); }
 </style>

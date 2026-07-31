@@ -4,12 +4,14 @@ import com.efgenbosh.backend.domain.Insurer;
 import com.efgenbosh.backend.domain.Shift;
 import com.efgenbosh.backend.domain.Supplier;
 import com.efgenbosh.backend.dto.directory.WorkCatalogItemResponse;
+import com.efgenbosh.backend.dto.directory.WorkCatalogItemRequest;
 import com.efgenbosh.backend.dto.directory.DirectoryItemRequest;
 import com.efgenbosh.backend.dto.directory.DirectoryItemResponse;
 import com.efgenbosh.backend.repository.InsurerRepository;
 import com.efgenbosh.backend.repository.ShiftRepository;
 import com.efgenbosh.backend.repository.SupplierRepository;
 import com.efgenbosh.backend.repository.WorkCatalogItemRepository;
+import com.efgenbosh.backend.repository.WorkCategoryRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -23,10 +25,12 @@ public class DirectoryController {
     private final SupplierRepository suppliers;
     private final ShiftRepository shifts;
     private final WorkCatalogItemRepository workCatalog;
+    private final WorkCategoryRepository workCategories;
 
     public DirectoryController(InsurerRepository insurers, SupplierRepository suppliers, ShiftRepository shifts,
-                               WorkCatalogItemRepository workCatalog) {
-        this.insurers = insurers; this.suppliers = suppliers; this.shifts = shifts; this.workCatalog = workCatalog;
+                               WorkCatalogItemRepository workCatalog, WorkCategoryRepository workCategories) {
+        this.insurers = insurers; this.suppliers = suppliers; this.shifts = shifts;
+        this.workCatalog = workCatalog; this.workCategories = workCategories;
     }
 
     @GetMapping("/insurers")
@@ -77,5 +81,24 @@ public class DirectoryController {
             .map(item -> new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(),
                 item.getCategory().getName(), item.getDefaultUnit()))
             .toList();
+    }
+
+    @PostMapping("/works")
+    @ResponseStatus(HttpStatus.CREATED)
+    public WorkCatalogItemResponse createWork(@Valid @RequestBody WorkCatalogItemRequest request) {
+        String categoryName = request.categoryName().trim();
+        var category = workCategories.findByNameIgnoreCase(categoryName).orElseGet(() -> {
+            var created = new com.efgenbosh.backend.domain.WorkCategory();
+            created.setName(categoryName);
+            return workCategories.save(created);
+        });
+        var item = new com.efgenbosh.backend.domain.WorkCatalogItem();
+        item.setCategory(category);
+        item.setCode(request.code().trim());
+        item.setName(request.name().trim());
+        item.setDefaultUnit(request.defaultUnit().trim());
+        item = workCatalog.save(item);
+        return new WorkCatalogItemResponse(item.getId(), item.getCode(), item.getName(),
+            item.getCategory().getName(), item.getDefaultUnit());
     }
 }
