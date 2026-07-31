@@ -332,10 +332,15 @@ function printWorkOrder() {
 function printDocument(type) {
   workOrderDocumentType.value = type
   documentTitle()
+  const heading = document.querySelector('.print-target h2')
+  const originalHeading = heading?.textContent
+  const number = type === 'invoice' ? workOrder.value?.invoiceNumber : type === 'act' ? workOrder.value?.actNumber : workOrder.value?.orderNumber
+  if (heading) heading.textContent = `${documentTitle()}${number ? ` · №${number}` : ''}`
   document.body.classList.add('printing-work-order')
   document.body.classList.add('printing-document', `printing-${type}`)
   window.setTimeout(() => window.print(), 0)
   window.setTimeout(() => {
+    if (heading && originalHeading) heading.textContent = originalHeading
     document.body.classList.remove('printing-work-order', 'printing-document', `printing-${type}`)
   }, 1000)
 }
