@@ -25,6 +25,8 @@ const workCatalog = ref([])
 const counterparties = ref([])
 const vehicleAliases = ref([])
 const contractors = ref([])
+const vehicleMakes = ref([])
+const vehicleModels = ref([])
 const carsBusy = ref(false)
 const carsError = ref('')
 const carPage = ref(0)
@@ -36,7 +38,14 @@ const expandedCars = ref(new Set())
 const carPhotos = ref([])
 const photosVisible = ref(false)
 const photosCar = ref(null)
+const photosCase = ref(null)
 const photosBusy = ref(false)
+const repairCases = ref([])
+const repairCasesVisible = ref(false)
+const repairCasesBusy = ref(false)
+const repairCaseCar = ref(null)
+const editingRepairCase = ref(null)
+const repairCaseForm = ref({ caseNumber: '', status: 'OPEN', insuredPerson: '', claimNumber: '', insurerId: '', contractorId: '', shiftId: '', acceptedAt: '' })
 const modal = ref(null)
 const toast = ref('')
 const carFormVisible = ref(false)
@@ -78,8 +87,8 @@ const partForm = ref(emptyPartForm())
 
 function emptyCarForm() {
   return {
-    vehicleName: '', vehicleNameLatin: '', registrationNumber: '', vin: '',
-    insuredPerson: '', claimNumber: '', acceptedAt: '', comment: '', documentFolderUrl: '', insurerId: '', shiftId: '', contractorId: '',
+    vehicleMake: '', vehicleModel: '', registrationNumber: '', vin: '', ownerName: '', ownerPhone: '',
+    comment: '', documentFolderUrl: '',
   }
 }
 
@@ -150,7 +159,7 @@ function changeCarPage(page) {
 
 async function loadDirectories() {
   try {
-    const [insurerItems, supplierItems, shiftItems, workItems, counterpartyItems, vehicleItems, contractorItems] = await Promise.all([
+    const [insurerItems, supplierItems, shiftItems, workItems, counterpartyItems, vehicleItems, contractorItems, makeItems] = await Promise.all([
       requestJson('/api/v1/directories/insurers'),
       requestJson('/api/v1/directories/suppliers'),
       requestJson('/api/v1/directories/shifts'),
@@ -158,6 +167,7 @@ async function loadDirectories() {
       requestJson('/api/v1/counterparties'),
       requestJson('/api/v1/directories/vehicles'),
       requestJson('/api/v1/contractors'),
+      requestJson('/api/v1/directories/vehicle-catalog/makes'),
     ])
     insurers.value = insurerItems
     suppliers.value = supplierItems
@@ -166,9 +176,15 @@ async function loadDirectories() {
     counterparties.value = counterpartyItems
     vehicleAliases.value = vehicleItems
     contractors.value = contractorItems
+    vehicleMakes.value = makeItems
   } catch (error) {
     showToast(`Справочники не загружены: ${error.message}`)
   }
+}
+
+async function loadVehicleModels() {
+  const make = vehicleMakes.value.find((item) => item.name === carForm.value.vehicleMake)
+  vehicleModels.value = make ? await requestJson(`/api/v1/directories/vehicle-catalog/models?makeId=${make.id}`).catch(() => []) : []
 }
 
 async function openWorkOrderRegistry() {
@@ -236,10 +252,34 @@ function openCarForm() {
 }
 
 async function openCarPhotos(car) {
-  photosCar.value = car
+  photosCar.value = car; photosCase.value = null
   photosVisible.value = true
   photosBusy.value = true
   try { carPhotos.value = await requestJson(`/api/v1/cars/${car.id}/photos`) } catch (error) { showToast(error.message) } finally { photosBusy.value = false }
+}
+
+async function openRepairCasePhotos(caseItem) {
+  photosCar.value = repairCaseCar.value; photosCase.value = caseItem; photosVisible.value = true; photosBusy.value = true
+  try { carPhotos.value = await requestJson(`/api/v1/cars/${repairCaseCar.value.id}/repair-cases/${caseItem.id}/photos`) } catch (error) { showToast(error.message) } finally { photosBusy.value = false }
+}
+
+async function openRepairCases(car) {
+  repairCaseCar.value = car; repairCasesVisible.value = true; repairCasesBusy.value = true
+  try { repairCases.value = await requestJson(`/api/v1/cars/${car.id}/repair-cases`) } catch (error) { showToast(error.message) } finally { repairCasesBusy.value = false }
+}
+
+function startRepairCase(caseItem = null) {
+  editingRepairCase.value = caseItem
+  repairCaseForm.value = caseItem ? { caseNumber: caseItem.caseNumber, status: caseItem.status, insuredPerson: caseItem.insuredPerson || '', claimNumber: caseItem.claimNumber || '', insurerId: caseItem.insurerId ? String(caseItem.insurerId) : '', contractorId: caseItem.contractorId ? String(caseItem.contractorId) : '', shiftId: caseItem.shiftId ? String(caseItem.shiftId) : '', acceptedAt: caseItem.acceptedAt || '' } : { caseNumber: String(repairCases.value.length + 1), status: 'OPEN', insuredPerson: '', claimNumber: '', insurerId: '', contractorId: '', shiftId: '', acceptedAt: '' }
+}
+
+async function saveRepairCase() {
+  try { const path = editingRepairCase.value ? `/api/v1/cars/${repairCaseCar.value.id}/repair-cases/${editingRepairCase.value.id}` : `/api/v1/cars/${repairCaseCar.value.id}/repair-cases`; await requestJson(path, { method: editingRepairCase.value ? 'PUT' : 'POST', body: JSON.stringify({ ...repairCaseForm.value, insurerId: repairCaseForm.value.insurerId ? Number(repairCaseForm.value.insurerId) : null, contractorId: repairCaseForm.value.contractorId ? Number(repairCaseForm.value.contractorId) : null, shiftId: repairCaseForm.value.shiftId ? Number(repairCaseForm.value.shiftId) : null }) }); repairCases.value = await requestJson(`/api/v1/cars/${repairCaseCar.value.id}/repair-cases`); editingRepairCase.value = null; showToast('Страховой случай сохранён') } catch (error) { showToast(error.message) }
+}
+
+async function deleteRepairCase(item) {
+  if (!window.confirm(`Удалить страховой случай №${item.caseNumber}?`)) return
+  try { await requestJson(`/api/v1/cars/${repairCaseCar.value.id}/repair-cases/${item.id}`, { method: 'DELETE' }); repairCases.value = repairCases.value.filter((value) => value.id !== item.id); showToast('Страховой случай удалён') } catch (error) { showToast(error.message) }
 }
 
 function readCarPhotos(event) {
@@ -251,7 +291,8 @@ function readCarPhotos(event) {
       const photo = { fileName: file.name, mimeType: file.type, dataUrl: reader.result, pending: true }
       carPhotos.value.push(photo)
       if (photosVisible.value && photosCar.value?.id) {
-        try { const saved = await requestJson(`/api/v1/cars/${photosCar.value.id}/photos`, { method: 'POST', body: JSON.stringify(photo) }); Object.assign(photo, saved); delete photo.pending; showToast('Фото сохранено в документах') } catch (error) { carPhotos.value = carPhotos.value.filter((item) => item !== photo); showToast(error.message) }
+        const path = photosCase.value ? `/api/v1/cars/${photosCar.value.id}/repair-cases/${photosCase.value.id}/photos` : `/api/v1/cars/${photosCar.value.id}/photos`
+        try { const saved = await requestJson(path, { method: 'POST', body: JSON.stringify(photo) }); Object.assign(photo, saved); delete photo.pending; showToast('Фото сохранено в документах') } catch (error) { carPhotos.value = carPhotos.value.filter((item) => item !== photo); showToast(error.message) }
       }
     }
     reader.readAsDataURL(file)
@@ -261,7 +302,8 @@ function readCarPhotos(event) {
 
 async function deleteCarPhoto(photo) {
   if (photo.pending) { carPhotos.value = carPhotos.value.filter((item) => item !== photo); return }
-  try { await requestJson(`/api/v1/cars/${photosCar.value.id}/photos/${photo.id}`, { method: 'DELETE' }); carPhotos.value = carPhotos.value.filter((item) => item.id !== photo.id); showToast('Фото удалено') } catch (error) { showToast(error.message) }
+  const path = photosCase.value ? `/api/v1/cars/${photosCar.value.id}/repair-cases/${photosCase.value.id}/photos/${photo.id}` : `/api/v1/cars/${photosCar.value.id}/photos/${photo.id}`
+  try { await requestJson(path, { method: 'DELETE' }); carPhotos.value = carPhotos.value.filter((item) => item.id !== photo.id); showToast('Фото удалено') } catch (error) { showToast(error.message) }
 }
 
 function openDirectories() {
@@ -363,21 +405,18 @@ async function openCarEdit(car) {
   selectedCar.value = source
   photosCar.value = source
   carHistory.value = await requestJson(`/api/v1/cars/${source.id}/history`).catch(() => [])
-  carPhotos.value = await requestJson(`/api/v1/cars/${source.id}/photos`).catch(() => [])
+  carPhotos.value = []
   carForm.value = {
-    vehicleName: source.vehicleName || '',
-    vehicleNameLatin: source.vehicleNameLatin || '',
+    vehicleMake: source.vehicleMake || '',
+    vehicleModel: source.vehicleModel || source.vehicleName || '',
     registrationNumber: source.registrationNumber || '',
     vin: source.vin || '',
-    insuredPerson: source.insuredPerson || '',
-    claimNumber: source.claimNumber || '',
-    acceptedAt: source.acceptedAt || '',
+    ownerName: source.ownerName || '',
+    ownerPhone: source.ownerPhone || '',
     comment: source.comment || '',
     documentFolderUrl: source.documentFolderUrl || '',
-    insurerId: source.insurerId ? String(source.insurerId) : '',
-    shiftId: source.shiftId ? String(source.shiftId) : '',
-    contractorId: source.contractorId ? String(source.contractorId) : '',
   }
+  await loadVehicleModels()
   carFormVisible.value = true
 }
 
@@ -543,24 +582,15 @@ function printDocument(type) {
 }
 
 async function saveCar() {
-  if (!carPhotos.value.length) { showToast('Добавьте хотя бы одну фотографию автомобиля'); return }
-  if (!carForm.value.contractorId) { showToast('Выберите исполнителя / мастера'); return }
   try {
     const path = editingCar.value ? `/api/v1/cars/${editingCar.value.id}` : '/api/v1/cars'
     const payload = {
       ...carForm.value,
-      insurerId: carForm.value.insurerId ? Number(carForm.value.insurerId) : null,
-      shiftId: carForm.value.shiftId ? Number(carForm.value.shiftId) : null,
-      contractorId: carForm.value.contractorId ? Number(carForm.value.contractorId) : null,
     }
     const savedCar = await requestJson(path, {
       method: editingCar.value ? 'PUT' : 'POST',
       body: JSON.stringify(payload),
     })
-    const pendingPhotos = carPhotos.value.filter((photo) => photo.pending)
-    for (const photo of pendingPhotos) {
-      await requestJson(`/api/v1/cars/${savedCar.id}/photos`, { method: 'POST', body: JSON.stringify({ fileName: photo.fileName, mimeType: photo.mimeType, dataUrl: photo.dataUrl }) })
-    }
     carFormVisible.value = false
     await loadCars()
     showToast(editingCar.value ? 'Автомобиль сохранён' : 'Автомобиль добавлен')
@@ -573,8 +603,7 @@ async function saveCar() {
 async function updateCarInline(car, field, value) {
   try {
     const payload = {
-      vehicleName: car.vehicleName || car.vehicle || '', vehicleNameLatin: car.vehicleNameLatin || '', registrationNumber: car.registrationNumber || '', vin: car.vin || '',
-      insuredPerson: car.insuredPerson || '', claimNumber: car.claimNumber || '', acceptedAt: car.acceptedAt || null, comment: car.comment === '—' ? '' : car.comment || '', documentFolderUrl: car.documentFolderUrl || '', insurerId: car.insurerId || null, shiftId: car.shiftId || null, contractorId: car.contractorId || null,
+      vehicleMake: car.vehicleMake || '', vehicleModel: car.vehicleModel || car.vehicleName || '', registrationNumber: car.registrationNumber || '', vin: car.vin || '', ownerName: car.ownerName || '', ownerPhone: car.ownerPhone || '', comment: car.comment === '—' ? '' : car.comment || '', documentFolderUrl: car.documentFolderUrl || '',
     }
     if (field === 'shiftId') payload.shiftId = value ? Number(value) : null; else payload[field] = value || null
     await requestJson(`/api/v1/cars/${car.id}`, { method: 'PUT', body: JSON.stringify(payload) })
@@ -817,17 +846,16 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
     <div v-if="workOrderVisible && generatedDocuments.length" class="generated-documents-toolbar"><strong>Документы:</strong><span v-for="doc in generatedDocuments.slice(0, 6)" :key="doc.id">{{ doc.documentType }}{{ doc.documentNumber ? ` №${doc.documentNumber}` : '' }}</span></div>
     <button v-if="workOrderVisible && workOrder" type="button" class="bundle-print-button button button-cloud" @click="printDocument('bundle')">Печатный комплект</button>
 
-    <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button" @click="openCarPhotos(editingCar)">Фото</button><button type="button" class="link-button" @click="printCarDocument('acceptance')">Акт приёма</button><button type="button" class="link-button" @click="printCarDocument('delivery')">Акт выдачи</button><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
+    <div v-if="carFormVisible && editingCar" class="car-delete-toolbar"><span>Карточка автомобиля №{{ editingCar.accountingNumber }}</span><button type="button" class="link-button" @click="printCarDocument('acceptance')">Акт приёма</button><button type="button" class="link-button" @click="printCarDocument('delivery')">Акт выдачи</button><button type="button" class="link-button danger-link" @click="deleteCar">Удалить автомобиль</button></div>
     <div v-if="carFormVisible && editingCar && carHistory.length" class="car-history-toolbar"><strong>История:</strong><span v-for="event in carHistory.slice(0, 4)" :key="event.id">{{ event.details }}</span></div>
     <div v-if="carFormVisible && vehicleAliases.length" class="vehicle-alias-toolbar"><span>Модель из справочника:</span><select @change="applyVehicleAlias($event.target.value)"><option value="">Выбрать модель</option><option v-for="item in vehicleAliases" :key="item.id" :value="item.id">{{ item.sourceName }}<template v-if="item.normalizedLatinName"> · {{ item.normalizedLatinName }}</template></option></select></div>
-    <div v-if="carFormVisible && contractors.length" class="contractor-toolbar"><span>Исполнитель:</span><select :value="carForm.contractorId" @change="applyContractor($event.target.value)"><option value="">Не выбран</option><option v-for="item in contractors" :key="item.id" :value="item.id">{{ item.shortName }} · {{ item.code }}</option></select></div>
 
     <div v-if="workOrderVisible && workOrder" class="document-toolbar"><span>Номера документов:</span><input v-model="workOrder.orderNumber" placeholder="Заказ-наряд №" /><input v-model="workOrder.invoiceNumber" placeholder="Счёт №" /><input v-model="workOrder.actNumber" placeholder="Акт №" /><span>Печать:</span><button type="button" class="link-button" @click="printDocument('order')">Заказ-наряд</button><button type="button" class="link-button" @click="printDocument('invoice')">Счёт</button><button type="button" class="link-button" @click="printDocument('act')">Акт</button></div>
 
     <div v-if="defectVisible" class="stub-overlay" @click.self="defectVisible = false"><section class="data-modal defect-modal"><button class="icon-button" aria-label="Закрыть" @click="defectVisible = false">×</button><p class="eyebrow">Осмотр автомобиля</p><h2>Дефектовка</h2><p class="modal-subtitle">{{ selectedDefectCar?.number }} · {{ selectedDefectCar?.vehicle }} · {{ selectedDefectCar?.registration }}</p><div v-if="defectBusy" class="empty-state">Загружаем дефектовку…</div><div v-else-if="defectError" class="empty-state">{{ defectError }}</div><form v-else class="data-form-grid" @submit.prevent="saveDefect"><label><span>Статус</span><select v-model="defect.status"><option value="DRAFT">Черновик</option><option value="CONFIRMED">Подтверждено</option></select></label><label class="form-wide"><span>Повреждения и замечания</span><textarea v-model="defect.findings" rows="5" placeholder="Передний бампер, левая дверь…"></textarea></label><label class="form-wide"><span>Рекомендованные работы и запчасти</span><textarea v-model="defect.recommendations" rows="5" placeholder="Замена бампера, окраска двери…"></textarea></label><label class="form-wide"><span>Фотографии осмотра (до 8)</span><input type="file" accept="image/*" multiple @change="readDefectPhotos" /></label><div v-if="defect.photos.length" class="defect-photo-grid form-wide"><img v-for="(photo, index) in defect.photos" :key="`${photo.slice(0, 24)}-${index}`" :src="photo" alt="Фото повреждения" /></div><div class="modal-actions form-wide"><button type="button" class="button button-cloud dark-button" @click="defectVisible = false">Отмена</button><button class="button button-primary" type="submit">Сохранить дефектовку</button></div></form></section></div>
     <div v-if="contractorVisible" class="stub-overlay" @click.self="contractorVisible = false"><form class="data-modal contractor-modal" @submit.prevent="saveContractor"><button type="button" class="icon-button" aria-label="Закрыть" @click="contractorVisible = false">×</button><p class="eyebrow">Реквизиты</p><h2>{{ editingContractor ? 'Изменить исполнителя' : 'Новый исполнитель' }}</h2><div class="data-form-grid"><label><span>Код</span><input v-model="contractorForm.code" required /></label><label><span>Краткое название</span><input v-model="contractorForm.shortName" required /></label><label class="form-wide"><span>Полное название</span><input v-model="contractorForm.fullName" required /></label><label><span>Подписант</span><input v-model="contractorForm.signerName" /></label><label><span>ИНН</span><input v-model="contractorForm.inn" /></label><label><span>ОГРНИП</span><input v-model="contractorForm.ogrnip" /></label><label class="form-wide"><span>Адрес</span><input v-model="contractorForm.address" /></label><label class="form-wide"><span>Банк</span><input v-model="contractorForm.bankName" /></label><label><span>БИК</span><input v-model="contractorForm.bik" /></label><label><span>Расчётный счёт</span><input v-model="contractorForm.settlementAccount" /></label></div><div class="contractor-list"><div v-for="item in contractors" :key="item.id" class="directory-item"><span>{{ item.shortName }}<small>{{ item.code }} · {{ item.inn || 'ИНН не указан' }}</small></span><button type="button" class="link-button" @click="openContractorForm(item)">Изменить</button><button type="button" class="link-button danger-link" @click="deleteContractor(item)">Удалить</button></div></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="contractorVisible = false">Закрыть</button><button class="button button-primary" type="submit">Сохранить</button></div></form></div>
 
-    <div v-if="carFormVisible" class="stub-overlay" @click.self="carFormVisible = false"><form class="data-modal" @submit.prevent="saveCar"><button type="button" class="icon-button" aria-label="Закрыть" @click="carFormVisible = false">×</button><p class="eyebrow">Карточка автомобиля</p><h2>{{ editingCar ? `Автомобиль №${editingCar.accountingNumber}` : 'Новый автомобиль' }}</h2><div class="data-form-grid"><label><span>Госномер *</span><input v-model="carForm.registrationNumber" required placeholder="А123ВС124" /></label><label><span>Автомобиль *</span><input v-model="carForm.vehicleName" required placeholder="Джили Окаванго" /></label><label class="form-wide"><span>Марка / модель латиницей *</span><input v-model="carForm.vehicleNameLatin" required placeholder="HYUNDAI CRETA" /></label><label><span>VIN *</span><input v-model="carForm.vin" required placeholder="VIN автомобиля" /></label><label><span>Страхователь *</span><input v-model="carForm.insuredPerson" required placeholder="ФИО или организация" /></label><label><span>Страховая *</span><select v-model="carForm.insurerId" required><option value="" disabled>Выберите страховую</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}{{ item.legalDetails ? ` · ${item.legalDetails}` : '' }}</option></select></label><label><span>Номер дела *</span><input v-model="carForm.claimNumber" required placeholder="108148/26" /></label><label><span>Смена *</span><select v-model="carForm.shiftId" required><option value="" disabled>Выберите смену</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Дата приёмки *</span><input v-model="carForm.acceptedAt" required type="date" /></label><label class="form-wide photo-form-field"><span>Фотографии автомобиля *</span><input type="file" accept="image/*" multiple :required="!carPhotos.length" @change="readCarPhotos" /><small>Можно выбрать несколько фото кузова, салона и повреждений. До 20 файлов по 8 МБ.</small><div v-if="carPhotos.length" class="form-photo-preview"><div v-for="photo in carPhotos" :key="photo.id || photo.dataUrl"><img :src="photo.dataUrl" :alt="photo.fileName || 'Фото автомобиля'" /><button type="button" class="link-button danger-link" @click="deleteCarPhoto(photo)">Удалить</button></div></div></label><label class="form-wide"><span>Комментарий</span><textarea v-model="carForm.comment" rows="3" placeholder="Необязательный комментарий"></textarea></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="carFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingCar ? 'Сохранить изменения' : 'Сохранить автомобиль' }}</button></div></form></div>
+    <div v-if="carFormVisible" class="stub-overlay" @click.self="carFormVisible = false"><form class="data-modal" @submit.prevent="saveCar"><button type="button" class="icon-button" aria-label="Закрыть" @click="carFormVisible = false">×</button><p class="eyebrow">Карточка автомобиля</p><h2>{{ editingCar ? `Автомобиль №${editingCar.accountingNumber}` : 'Новый автомобиль' }}</h2><div class="data-form-grid"><label><span>Марка *</span><input v-model="carForm.vehicleMake" list="vehicle-makes" required placeholder="Начните вводить марку" @change="loadVehicleModels" /></label><label><span>Модель *</span><input v-model="carForm.vehicleModel" list="vehicle-models" required placeholder="Начните вводить модель" /></label><datalist id="vehicle-makes"><option v-for="item in vehicleMakes" :key="item.id" :value="item.name" /></datalist><datalist id="vehicle-models"><option v-for="item in vehicleModels" :key="item.id" :value="item.name" /></datalist><label><span>Госномер *</span><input v-model="carForm.registrationNumber" required placeholder="А123ВС124" /></label><label><span>VIN *</span><input v-model="carForm.vin" required placeholder="VIN автомобиля" /></label><label><span>ФИО владельца *</span><input v-model="carForm.ownerName" required placeholder="ФИО владельца" /></label><label><span>Телефон владельца *</span><input v-model="carForm.ownerPhone" required placeholder="+7 999 000-00-00" /></label><label class="form-wide"><span>Комментарий</span><textarea v-model="carForm.comment" rows="3" placeholder="Необязательный комментарий"></textarea></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="carFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingCar ? 'Сохранить изменения' : 'Сохранить автомобиль' }}</button></div></form></div>
 
     <div v-if="partFormVisible" class="stub-overlay" @click.self="partFormVisible = false"><form class="data-modal compact-modal" @submit.prevent="savePart"><button type="button" class="icon-button" aria-label="Закрыть" @click="partFormVisible = false">×</button><p class="eyebrow">Заказ запчасти</p><h2>{{ editingPart ? 'Изменить деталь' : 'Добавить деталь' }}</h2><p class="modal-subtitle">{{ selectedCar?.number }} · {{ selectedCar?.vehicle }}</p><div class="data-form-grid"><label><span>Деталь</span><input v-model="partForm.name" required placeholder="Бампер передний" /></label><label><span>Артикул</span><input v-model="partForm.article" placeholder="604A124500" /></label><label><span>Поставщик</span><select v-model="partForm.supplierId"><option value="">Не выбран</option><option v-for="item in suppliers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Ожидаемая дата</span><input v-model="partForm.expectedDate" type="date" /></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="partFormVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ editingPart ? 'Сохранить изменения' : 'Добавить деталь' }}</button></div></form></div>
 
@@ -839,6 +867,8 @@ watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearc
     <div v-if="photosVisible" class="stub-overlay" @click.self="photosVisible = false"><section class="data-modal photos-modal"><button class="icon-button" aria-label="Закрыть" @click="photosVisible = false">×</button><p class="eyebrow">Документы автомобиля</p><h2>Фото автомобиля</h2><p class="modal-subtitle">{{ photosCar?.number }} · {{ photosCar?.vehicle }}</p><div v-if="photosBusy" class="empty-state">Загружаем фотографии…</div><div v-else class="car-photo-grid"><div v-for="photo in carPhotos" :key="photo.id || photo.dataUrl" class="car-photo-card"><img :src="photo.dataUrl" :alt="photo.fileName || 'Фото автомобиля'" /><div><small>{{ photo.fileName }}</small><button type="button" class="link-button danger-link" @click="deleteCarPhoto(photo)">Удалить</button></div></div><p v-if="!carPhotos.length" class="empty-state">Фотографии пока не добавлены.</p></div></section></div>
     <div v-if="directoriesVisible" class="settings-overlay" @click.self="directoriesVisible = false"><section class="settings-screen"><button class="icon-button" aria-label="Закрыть" @click="directoriesVisible = false">×</button><p class="eyebrow">Управление программой</p><h2>Настройки</h2><p class="settings-subtitle">Справочники, контрагенты и рабочие параметры.</p><nav class="settings-tabs"><button type="button" :class="{ 'is-active': settingsTab === 'directories' }" @click="settingsTab = 'directories'">Справочники</button><button type="button" :class="{ 'is-active': settingsTab === 'counterparties' }" @click="settingsTab = 'counterparties'">Контрагенты</button><button type="button" disabled>Резервные копии</button><button type="button" disabled>История</button><button type="button" disabled>Безопасность</button></nav><template v-if="settingsTab === 'directories'"><div class="settings-section-head"><div><h3>Справочники</h3><p>Эти значения используются в карточках автомобилей, запчастях и документах.</p></div></div><div class="settings-directory-grid"><section class="settings-card"><div class="settings-card-head"><div><h3>Страховые компании</h3><p>Название для выбора в карточке автомобиля.</p></div><button type="button" class="settings-add" @click="addSettingsItem('insurers', settingsNewInsurer)">＋ Добавить</button></div><div class="settings-add-row"><input v-model="settingsNewInsurer" placeholder="Название страховой" @keyup.enter="addSettingsItem('insurers', settingsNewInsurer)" /></div><div class="settings-list"><div v-for="item in insurers" :key="item.id" class="settings-list-row"><input :value="item.name" @change="openDirectoryEdit(item); directoryType = 'insurers'; createDirectoryItem()" /><button type="button" class="settings-delete" @click="removeSettingsItem('insurers', item)">×</button></div></div></section><section class="settings-card"><div class="settings-card-head"><div><h3>Поставщики</h3><p>Выбор в строках запчастей.</p></div><button type="button" class="settings-add" @click="addSettingsItem('suppliers', settingsNewSupplier)">＋ Добавить</button></div><div class="settings-add-row"><input v-model="settingsNewSupplier" placeholder="Название поставщика" @keyup.enter="addSettingsItem('suppliers', settingsNewSupplier)" /></div><div class="settings-list"><div v-for="item in suppliers" :key="item.id" class="settings-list-row"><input :value="item.name" @change="openDirectoryEdit(item); directoryType = 'suppliers'; createDirectoryItem()" /><button type="button" class="settings-delete" @click="removeSettingsItem('suppliers', item)">×</button></div></div></section></div></template><template v-else><div class="settings-section-head"><div><h3>Контрагенты</h3><p>Контрагенты используются в генераторе документов для автомобилей вне реестра.</p></div></div><div class="settings-counterparty-grid"><form class="settings-card settings-counterparty-form" @submit.prevent="saveSettingsCounterparty"><h3>Новый контрагент</h3><label><span>Наименование или ФИО *</span><input v-model="settingsNewCounterparty.name" required placeholder="Например, ООО «Автотранс»" /></label><div class="settings-two-fields"><label><span>ИНН</span><input v-model="settingsNewCounterparty.inn" placeholder="ИНН организации или ИП" /></label><label><span>Телефон</span><input v-model="settingsNewCounterparty.phone" placeholder="+7 999 000-00-00" /></label></div><label><span>Адрес</span><input v-model="settingsNewCounterparty.address" placeholder="Город, улица, дом" /></label><label><span>Комментарий</span><input v-model="settingsNewCounterparty.note" placeholder="Необязательная внутренняя заметка" /></label><button class="button button-primary" type="submit">Сохранить контрагента</button></form><section class="settings-card"><h3>Сохранённые контрагенты</h3><p>{{ counterparties.length }} записей</p><div class="settings-list"><div v-for="item in counterparties" :key="item.id" class="counterparty-row"><div><strong>{{ item.name }}</strong><small>ИНН {{ item.inn || 'не указан' }}</small><small>{{ item.address || 'Адрес не указан' }}</small></div><div><button type="button" class="settings-edit" @click="openDirectoryEdit(item); directoryType = 'counterparties'">Изменить</button><button type="button" class="settings-delete-text" @click="removeSettingsCounterparty(item)">Удалить</button></div></div></div></section></div></template></section></div>
     <div v-if="directoriesVisible" class="settings-overlay-v2" @click.self="directoriesVisible = false"><section class="settings-screen"><button class="icon-button" aria-label="Закрыть" @click="directoriesVisible = false">×</button><p class="eyebrow">Управление программой</p><h2>Настройки</h2><p class="settings-subtitle">Справочники, контрагенты, мастера и рабочие параметры.</p><nav class="settings-tabs"><button type="button" :class="{ 'is-active': settingsTab === 'directories' }" @click="settingsTab = 'directories'">Справочники</button><button type="button" :class="{ 'is-active': settingsTab === 'counterparties' }" @click="settingsTab = 'counterparties'">Контрагенты</button><button type="button" disabled>Резервные копии</button><button type="button" disabled>История</button><button type="button" disabled>Безопасность</button></nav><template v-if="settingsTab === 'directories'"><div class="settings-section-head"><div><h3>Справочники</h3><p>Значения используются в карточках автомобилей, запчастях и документах.</p></div></div><div class="settings-directory-grid"><section class="settings-card"><div class="settings-card-head"><div><h3>Страховые компании</h3><p>Название и адрес/реквизиты одной строкой.</p></div></div><div class="settings-add-row settings-insurer-add"><input v-model="settingsNewInsurer" placeholder="Название страховой" /><input v-model="directoryForm.note" placeholder="Адрес и реквизиты" /><button type="button" class="settings-add" @click="addSettingsItem('insurers', settingsNewInsurer)">＋ Добавить</button></div><div class="settings-list"><div v-for="item in insurers" :key="item.id" class="settings-list-row"><input :value="item.name" /><input :value="item.legalDetails || ''" placeholder="Адрес и реквизиты" /><button type="button" class="settings-delete" @click="removeSettingsItem('insurers', item)">×</button></div></div></section><section class="settings-card"><div class="settings-card-head"><div><h3>Поставщики</h3><p>Только названия для строк запчастей.</p></div></div><div class="settings-add-row"><input v-model="settingsNewSupplier" placeholder="Название поставщика" /><button type="button" class="settings-add" @click="addSettingsItem('suppliers', settingsNewSupplier)">＋ Добавить</button></div><div class="settings-list"><div v-for="item in suppliers" :key="item.id" class="settings-list-row"><input :value="item.name" /><button type="button" class="settings-delete" @click="removeSettingsItem('suppliers', item)">×</button></div></div></section><section class="settings-card"><div class="settings-card-head"><div><h3>Работы</h3><p>Название и расшифровка в нормо-часах.</p></div></div><div class="settings-add-row"><input v-model="settingsNewWork.name" placeholder="Название работы" /><input v-model.number="settingsNewWork.normHours" type="number" min="0" step="0.01" placeholder="Нормо-часы" /><button type="button" class="settings-add" @click="saveSettingsWork">＋ Добавить</button></div><div class="settings-list"><div v-for="item in workCatalog" :key="item.id" class="settings-list-row"><span>{{ item.name }}</span><strong>{{ item.normHours || 0 }} н/ч</strong><button type="button" class="settings-delete" @click="removeSettingsWork(item)">×</button></div></div></section><section class="settings-card"><div class="settings-card-head"><div><h3>Исполнители / мастера</h3><p>Мастера, доступные в карточке автомобиля.</p></div></div><div class="settings-add-row"><input v-model="settingsNewMaster.code" placeholder="Код" /><input v-model="settingsNewMaster.shortName" placeholder="Имя мастера" /><button type="button" class="settings-add" @click="saveSettingsMaster">＋ Добавить</button></div><div class="settings-list"><div v-for="item in contractors" :key="item.id" class="settings-list-row"><span>{{ item.shortName }}</span><code>{{ item.code }}</code><button type="button" class="settings-delete" @click="removeSettingsMaster(item)">×</button></div></div></section></div></template><template v-else><div class="settings-section-head"><div><h3>Контрагенты</h3><p>Контрагенты используются в генераторе документов для автомобилей вне реестра.</p></div></div><div class="settings-counterparty-grid"><form class="settings-card settings-counterparty-form" @submit.prevent="saveSettingsCounterparty"><h3>Новый контрагент</h3><p>Наименование или ФИО *</p><input v-model="settingsNewCounterparty.name" required placeholder="Например, ООО «Автотранс»" /><div class="settings-two-fields"><label><span>ИНН</span><input v-model="settingsNewCounterparty.inn" placeholder="ИНН организации или ИП" /></label><label><span>Телефон</span><input v-model="settingsNewCounterparty.phone" placeholder="+7 999 000-00-00" /></label></div><label><span>Адрес</span><input v-model="settingsNewCounterparty.address" placeholder="Город, улица, дом" /></label><label><span>Комментарий</span><input v-model="settingsNewCounterparty.note" placeholder="Необязательная внутренняя заметка" /></label><button class="button button-primary" type="submit">Сохранить контрагента</button></form><section class="settings-card"><h3>Сохранённые контрагенты</h3><p>{{ counterparties.length }} записей</p><div class="settings-list"><div v-for="item in counterparties" :key="item.id" class="counterparty-row"><div><strong>{{ item.name }}</strong><small>ИНН {{ item.inn || 'не указан' }}</small><small>{{ item.address || 'Адрес не указан' }}</small></div><button type="button" class="settings-delete-text" @click="removeSettingsCounterparty(item)">Удалить</button></div></div></section></div></template></section></div>
+    <button v-if="carFormVisible && editingCar" type="button" class="repair-cases-button button button-primary" @click="openRepairCases(editingCar)">Страховые случаи</button>
+    <div v-if="repairCasesVisible" class="stub-overlay" @click.self="repairCasesVisible = false"><section class="data-modal repair-cases-modal"><button class="icon-button" aria-label="Закрыть" @click="repairCasesVisible = false">×</button><p class="eyebrow">Автомобиль №{{ repairCaseCar?.number }}</p><h2>Страховые случаи</h2><div v-if="repairCasesBusy" class="empty-state">Загружаем случаи…</div><template v-else><div class="repair-case-list"><div v-for="item in repairCases" :key="item.id" class="repair-case-card"><div><strong>Случай №{{ item.caseNumber }}</strong><small>{{ item.claimNumber || 'Номер дела не указан' }} · {{ item.status }}</small><small>{{ item.insuredPerson || 'Страхователь не указан' }}</small></div><div><button type="button" class="settings-edit" @click="openRepairCasePhotos(item)">Фото</button><button type="button" class="settings-edit" @click="startRepairCase(item)">Изменить</button><button type="button" class="settings-delete-text" @click="deleteRepairCase(item)">Удалить</button></div></div></div><button type="button" class="button button-primary" @click="startRepairCase()">＋ Новый страховой случай</button><form v-if="editingRepairCase || repairCaseForm.caseNumber" class="data-form-grid repair-case-form" @submit.prevent="saveRepairCase"><label><span>Номер случая *</span><input v-model="repairCaseForm.caseNumber" required /></label><label><span>Статус *</span><select v-model="repairCaseForm.status" required><option value="OPEN">Открыт</option><option value="IN_REPAIR">В ремонте</option><option value="READY">Готов</option><option value="CLOSED">Закрыт</option></select></label><label><span>Страхователь</span><input v-model="repairCaseForm.insuredPerson" /></label><label><span>Номер дела</span><input v-model="repairCaseForm.claimNumber" /></label><label><span>Страховая</span><select v-model="repairCaseForm.insurerId"><option value="">Не выбрана</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Мастер</span><select v-model="repairCaseForm.contractorId"><option value="">Не выбран</option><option v-for="item in contractors" :key="item.id" :value="String(item.id)">{{ item.shortName }}</option></select></label><label><span>Смена</span><select v-model="repairCaseForm.shiftId"><option value="">Не выбрана</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Дата приёмки</span><input v-model="repairCaseForm.acceptedAt" type="date" /></label><div class="modal-actions form-wide"><button class="button button-primary" type="submit">Сохранить случай</button></div></form></template></section></div>
     <div v-if="toast" class="toast">{{ toast }}</div>
   </template>
     <div v-if="workOrderRegistryVisible" class="stub-overlay" @click.self="workOrderRegistryVisible = false"><section class="data-modal registry-modal"><button class="icon-button" aria-label="Закрыть" @click="workOrderRegistryVisible = false">×</button><p class="eyebrow">Реестр документов</p><h2>Заказ-наряды</h2><div class="registry-actions"><button class="button button-cloud dark-button" type="button" @click="downloadWorkOrderCsv" :disabled="!workOrderRegistry.length">Скачать CSV</button></div><div v-if="workOrderRegistryBusy" class="empty-state">Загружаем реестр…</div><div v-else-if="workOrderRegistryError" class="empty-state">{{ workOrderRegistryError }}</div><div v-else class="registry-table"><div class="registry-row registry-head"><span>№</span><span>Автомобиль</span><span>Заказчик</span><span>Дата</span><span>Статус</span><span>Итого</span><span>Документы</span></div><div v-for="item in workOrderRegistry" :key="item.id" class="registry-row"><span>{{ item.orderNumber || `#${item.id}` }}</span><span>{{ item.vehicleName || 'Без автомобиля' }}<small>{{ item.registrationNumber || '—' }}</small></span><span>{{ item.customer || '—' }}</span><span>{{ item.documentDate || '—' }}</span><span>{{ item.status }}</span><strong>{{ Number(item.total || 0).toFixed(2) }}</strong><span>{{ item.invoiceNumber || '—' }} · {{ item.actNumber || '—' }}</span></div><p v-if="!workOrderRegistry.length" class="empty-state">Заказ-нарядов пока нет.</p></div></section></div>

@@ -39,8 +39,20 @@ public class Car {
     @Column(name = "vehicle_name_latin", nullable = false, length = 255)
     private String vehicleNameLatin = "";
 
+    @Column(name = "vehicle_make", nullable = false, length = 120)
+    private String vehicleMake = "";
+
+    @Column(name = "vehicle_model", nullable = false, length = 180)
+    private String vehicleModel = "";
+
     @Column(nullable = false, length = 32)
     private String vin = "";
+
+    @Column(name = "owner_name", nullable = false, length = 255)
+    private String ownerName = "";
+
+    @Column(name = "owner_phone", nullable = false, length = 64)
+    private String ownerPhone = "";
 
     @Column(name = "insured_person", nullable = false, length = 500)
     private String insuredPerson = "";
@@ -102,8 +114,16 @@ public class Car {
     public void setVehicleName(String value) { vehicleName = value; }
     public String getVehicleNameLatin() { return vehicleNameLatin; }
     public void setVehicleNameLatin(String value) { vehicleNameLatin = value; }
+    public String getVehicleMake() { return vehicleMake; }
+    public void setVehicleMake(String value) { vehicleMake = value; }
+    public String getVehicleModel() { return vehicleModel; }
+    public void setVehicleModel(String value) { vehicleModel = value; }
     public String getVin() { return vin; }
     public void setVin(String value) { vin = value; }
+    public String getOwnerName() { return ownerName; }
+    public void setOwnerName(String value) { ownerName = value; }
+    public String getOwnerPhone() { return ownerPhone; }
+    public void setOwnerPhone(String value) { ownerPhone = value; }
     public String getInsuredPerson() { return insuredPerson; }
     public void setInsuredPerson(String value) { insuredPerson = value; }
     public String getClaimNumber() { return claimNumber; }

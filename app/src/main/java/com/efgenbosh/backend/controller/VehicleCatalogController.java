@@ -1,0 +1,4 @@
+package com.efgenbosh.backend.controller;
+import com.efgenbosh.backend.repository.*; import org.springframework.web.bind.annotation.*; import java.util.List;
+@RestController @RequestMapping("/api/v1/directories/vehicle-catalog")
+public class VehicleCatalogController { private final VehicleMakeRepository makes; private final VehicleModelRepository models; public VehicleCatalogController(VehicleMakeRepository makes, VehicleModelRepository models){this.makes=makes;this.models=models;} @GetMapping("/makes") public List<?> makes(){return makes.findAllByActiveTrueOrderByNameAsc().stream().map(x->new Item(x.getId(),x.getName())).toList();} @GetMapping("/models") public List<?> models(@RequestParam Long makeId){return models.findAllByMake_IdAndActiveTrueOrderByNameAsc(makeId).stream().map(x->new Item(x.getId(),x.getName())).toList();} record Item(Long id,String name){} }

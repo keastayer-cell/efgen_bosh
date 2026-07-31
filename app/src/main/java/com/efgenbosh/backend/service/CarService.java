@@ -49,6 +49,8 @@ public class CarService {
         return cars.findAllWithParts().stream().filter(car -> needle.isBlank()
             || String.valueOf(car.getAccountingNumber()).contains(needle)
             || value(car.getVehicleName()).toLowerCase().contains(needle)
+            || value(car.getVehicleMake()).toLowerCase().contains(needle)
+            || value(car.getVehicleModel()).toLowerCase().contains(needle)
             || value(car.getRegistrationNumber()).toLowerCase().contains(needle)
             || value(car.getVin()).toLowerCase().contains(needle)
             || value(car.getClaimNumber()).toLowerCase().contains(needle)).map(this::response).toList();
@@ -169,14 +171,14 @@ public class CarService {
 
     private void apply(Car car, CarRequest r) {
         car.setLegacyId(r.legacyId());
-        car.setVehicleName(r.vehicleName().trim());
-        car.setVehicleNameLatin(value(r.vehicleNameLatin()));
+        car.setVehicleMake(r.vehicleMake().trim());
+        car.setVehicleModel(r.vehicleModel().trim());
+        car.setVehicleName(car.getVehicleMake() + " " + car.getVehicleModel());
+        car.setVehicleNameLatin(car.getVehicleName());
         car.setRegistrationNumber(LegacyBusinessRules.normalizeRegistrationNumber(r.registrationNumber()));
         car.setVin(LegacyBusinessRules.normalizeVin(r.vin()));
-        car.setInsuredPerson(value(r.insuredPerson()));
-        car.setClaimNumber(value(r.claimNumber()));
-        car.setInsurerId(r.insurerId()); car.setContractorId(r.contractorId());
-        car.setAcceptedAt(r.acceptedAt()); car.setShiftId(r.shiftId());
+        car.setOwnerName(value(r.ownerName()));
+        car.setOwnerPhone(value(r.ownerPhone()));
         car.setComment(value(r.comment())); car.setDocumentFolderUrl(value(r.documentFolderUrl()));
     }
 

@@ -7,16 +7,12 @@ import java.time.LocalDate;
 
 public record CarRequest(
     String legacyId,
-    @NotBlank @Size(max = 255) String vehicleName,
-    @Size(max = 255) String vehicleNameLatin,
-    @Size(max = 32) String registrationNumber,
-    @Size(max = 32) String vin,
-    @Size(max = 500) String insuredPerson,
-    @Size(max = 120) String claimNumber,
-    Long insurerId,
-    Long contractorId,
-    LocalDate acceptedAt,
-    Long shiftId,
+    @NotBlank @Size(max = 120) String vehicleMake,
+    @NotBlank @Size(max = 180) String vehicleModel,
+    @NotBlank @Size(max = 32) String registrationNumber,
+    @NotBlank @Size(max = 32) String vin,
+    @NotBlank @Size(max = 255) String ownerName,
+    @NotBlank @Size(max = 64) String ownerPhone,
     String comment,
     String documentFolderUrl
 ) {

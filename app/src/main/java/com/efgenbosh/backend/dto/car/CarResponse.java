@@ -9,7 +9,8 @@ import java.util.List;
 
 public record CarResponse(
     Long id, Long accountingNumber, String legacyId, String vehicleName,
-    String vehicleNameLatin, String registrationNumber, String vin,
+    String vehicleNameLatin, String vehicleMake, String vehicleModel, String registrationNumber, String vin,
+    String ownerName, String ownerPhone,
     String insuredPerson, String claimNumber, Long insurerId, Long contractorId,
     LocalDate acceptedAt, LocalDate startedAt, LocalDate appointmentDate,
     Long shiftId, String comment, String documentFolderUrl, boolean delivered,
@@ -22,8 +23,8 @@ public record CarResponse(
         var status = LegacyBusinessRules.carStatus(
             car.isDelivered(), parts.stream().map(p -> new LegacyBusinessRules.PartState(p.received())).toList());
         return new CarResponse(car.getId(), car.getAccountingNumber(), car.getLegacyId(),
-            car.getVehicleName(), car.getVehicleNameLatin(), car.getRegistrationNumber(),
-            car.getVin(), car.getInsuredPerson(), car.getClaimNumber(), car.getInsurerId(),
+            car.getVehicleName(), car.getVehicleNameLatin(), car.getVehicleMake(), car.getVehicleModel(), car.getRegistrationNumber(),
+            car.getVin(), car.getOwnerName(), car.getOwnerPhone(), car.getInsuredPerson(), car.getClaimNumber(), car.getInsurerId(),
             car.getContractorId(), car.getAcceptedAt(), car.getStartedAt(),
             car.getAppointmentDate(), car.getShiftId(), car.getComment(),
             car.getDocumentFolderUrl(), car.isDelivered(), car.getDeliveredAt(), status,
