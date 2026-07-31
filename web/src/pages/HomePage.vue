@@ -470,8 +470,10 @@ function openStub(name) {
     return
   }
   if (name === 'Дефектовка') {
-    const source = selectedCar.value || visibleCars.value[0]
-    if (source) openDefect(mappedCars.value.find((item) => item.id === source.id) || source)
+    window.setTimeout(() => {
+      const source = selectedCar.value || visibleCars.value[0]
+      if (source) openDefect(mappedCars.value.find((item) => item.id === source.id) || source)
+    }, 0)
     return
   }
   modal.value = name
