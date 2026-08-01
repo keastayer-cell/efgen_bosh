@@ -22,6 +22,7 @@ const activeSection = ref('cases')
 const repairRegistry = ref([])
 const caseSearch = ref('')
 const caseStatusFilter = ref('ALL')
+const caseContractorFilter = ref('')
 const caseStatusOptions = ref([{ code: 'ALL', label: 'Все' }])
 const casePage = ref(0)
 const casePageSize = ref(20)
@@ -201,12 +202,13 @@ async function loadRepairRegistry() {
   try {
     const params = new URLSearchParams({ page: String(casePage.value), size: String(casePageSize.value), status: caseStatusFilter.value === 'ALL' ? 'all' : caseStatusFilter.value })
     if (caseSearch.value.trim()) params.set('q', caseSearch.value.trim())
+    if (caseContractorFilter.value) params.set('contractorId', caseContractorFilter.value)
     const result = await requestJson(`/api/v1/cars/search/page?${params.toString()}`)
     cars.value = result.items
     carTotalPages.value = result.totalPages
     carTotalItems.value = result.totalItems
     stats.value = result.summary || stats.value
-    repairRegistry.value = result.items.flatMap((car) => (car.repairCases || []).filter((item) => caseStatusFilter.value === 'ALL' || item.status === caseStatusFilter.value).map((item) => ({ ...item, carId: car.id })))
+    repairRegistry.value = result.items.flatMap((car) => (car.repairCases || []).filter((item) => (caseStatusFilter.value === 'ALL' || item.status === caseStatusFilter.value) && (!caseContractorFilter.value || String(item.contractorId || '') === String(caseContractorFilter.value))).map((item) => ({ ...item, carId: car.id })))
     caseTotalItems.value = result.totalItems
     caseTotalPagesFromApi.value = result.totalPages
     syncCaseRowMeta()
@@ -284,7 +286,7 @@ async function toggleCasePartReceived(item, part) {
       body: JSON.stringify({ name: part.name, article: part.article || '', catalogNumber: part.catalogNumber || '', manufacturer: part.manufacturer || '', quantity: Number(part.quantity || 1), supplierId: part.supplierId || null, orderedAt: part.orderedAt || null, expectedDate: part.expectedDate || null, comment: part.comment || '', received: !part.received, sortOrder: part.sortOrder || 0 }),
     })
     expandedCaseParts.value = expandedCaseParts.value.map((value) => value.id === updated.id ? updated : value)
-    await loadRepairRegistry()
+    await Promise.all([loadRepairRegistry(), loadRepairCaseStatuses(), loadContractors()])
     selectedRegistryCase.value = repairRegistry.value.find((value) => value.id === item.id) || selectedRegistryCase.value
     showToast(updated.received ? `Деталь «${updated.name}» получена` : `Поступление детали «${updated.name}» отменено`)
   } catch (error) { showToast(error.message) }
@@ -1150,6 +1152,7 @@ onMounted(() => {
   if (token.value) {
     loadRepairRegistry()
     loadRepairCaseStatuses()
+    loadContractors()
   }
   syncCaseRowMeta()
 })
@@ -1166,7 +1169,7 @@ watch(activeSection, (section) => {
   if (section === 'clients') loadCars()
   if (section === 'settings') loadDirectories()
 })
-watch([caseSearch, caseStatusFilter], () => {
+watch([caseSearch, caseStatusFilter, caseContractorFilter], () => {
   casePage.value = 0
   expandedCaseId.value = null
   window.clearTimeout(window.__efgenCaseTimer)
@@ -1267,6 +1270,7 @@ watch(paginatedRepairCases, syncCaseRowMeta)
 
       <section v-if="activeSection === 'cases'" class="workspace cases-workspace">
         <div class="toolbar"><label class="search-field"><span>⌕</span><input v-model="caseSearch" type="search" placeholder="Поиск по VIN, номеру автомобиля или номеру дела" /></label><div class="case-status-filters"><button v-for="filter in caseStatusOptions" :key="filter.code" type="button" class="filter" :class="{ 'is-active': caseStatusFilter === filter.code }" @click="caseStatusFilter = filter.code">{{ filter.label }}</button></div><button class="button button-primary" type="button" @click="openRepairMenu">＋ Создать страховой случай</button></div>
+        <div class="case-contractor-filter-row"><label>Исполнитель<select v-model="caseContractorFilter" aria-label="Фильтр по исполнителю"><option value="">Все исполнители</option><option v-for="item in contractors" :key="item.id" :value="String(item.id)">{{ item.shortName || item.fullName }}</option></select></label></div>
         <div class="list-head case-list-head"><span>Автомобиль</span><span>Страховой случай</span><span>Страховая компания</span><span>Исполнитель</span><span>Статус</span><span>Создан</span></div>
         <div class="cars-list"><template v-for="item in visibleRepairCases" :key="item.id"><article class="car-row case-row" :class="{ 'is-selected': expandedCaseId === item.id }"><div class="cell"><strong>{{ item.vehicleMake }} {{ item.vehicleModel }}</strong><small>VIN {{ item.vin }}</small><small>{{ item.registrationNumber }} · {{ item.ownerName }} · {{ item.ownerPhone }}</small></div><div class="cell"><strong>Случай №{{ item.caseNumber }}</strong></div><div class="cell"><span class="insurance-pill">{{ insurers.find((insurer) => insurer.id === item.insurerId)?.name || 'Страховая не указана' }}</span></div><div class="cell">{{ contractors.find((contractor) => contractor.id === item.contractorId)?.shortName || '—' }}</div><div class="cell case-parts-progress-cell"><div class="parts-progress-ring" :style="{ '--parts-progress': item.partsTotal ? (item.partsReceived / item.partsTotal) * 100 + '%' : '0%' }"><span>{{ item.partsReceived || 0 }}/{{ item.partsTotal || 0 }}</span></div><div><strong>{{ item.partsReceived || 0 }} из {{ item.partsTotal || 0 }}</strong><small>{{ item.partsTotal ? (item.partsReceived === item.partsTotal ? 'Поступление по графику' : 'Ожидание деталей') : 'Детали не добавлены' }}</small></div></div><div class="cell"><span class="case-status">{{ statusLabel(item.status) }}</span></div><div class="cell muted-cell"><span>{{ item.createdAt ? item.createdAt.slice(0, 10) : '—' }}</span><button type="button" class="case-row-details-button" @click.stop="toggleCaseRow(item)">{{ expandedCaseId === item.id ? 'Скрыть детали' : 'Открыть' }}</button></div></article><section v-if="expandedCaseId === item.id" class="case-row-details"><div class="case-row-details-head"><strong>Детали страхового случая №{{ item.caseNumber }}</strong><span>{{ expandedCaseParts.length }} деталей · {{ expandedCaseParts.filter((part) => part.received).length }} получено</span></div><div v-if="expandedCaseParts.length" class="case-parts-table"><div class="case-parts-table-head"><span>Деталь</span><span>Артикул</span><span>Поставщик</span><span>Плановая поставка</span><span>Статус</span><span>Поступила</span></div><div v-for="part in expandedCaseParts" :key="part.id" class="case-parts-table-row"><span><strong>{{ part.name }}</strong><small>{{ part.comment || 'Без комментария' }}</small></span><span>{{ part.article || '—' }}</span><span>{{ suppliers.find((supplier) => supplier.id === part.supplierId)?.name || '—' }}</span><span>{{ part.expectedDate || '—' }}</span><span class="case-part-status-cell"><div class="case-part-status-actions"><b :class="part.received ? 'part-received' : 'part-waiting'">{{ part.received ? 'Получена' : 'Ожидается' }}</b><button type="button" class="part-receipt-button" :class="{ 'is-received': part.received }" @click.stop="toggleCasePartReceived(item, part)">{{ part.received ? 'Отменить' : 'Отметить поступление' }}</button></div></span><span class="case-received-date">{{ part.received ? part.receivedAt : '—' }}</span></div></div><p v-else class="empty-state">У этого страхового случая деталей пока нет.</p></section></template><p v-if="!visibleRepairCases.length" class="empty-state">Страховых случаев пока нет. Создайте первый через «＋ Ремонт».</p></div>
         <section v-if="expandedCaseItem" class="case-receipt-panel"><div class="case-receipt-head"><div><strong>Детали страхового случая №{{ expandedCaseItem.caseNumber }}</strong><span>{{ statusLabel(expandedCaseItem.status) }}</span></div><small>Отметьте поступление — дата поступления сохранится автоматически.</small></div><div v-if="expandedCaseParts.length" class="case-receipt-list"><div v-for="part in expandedCaseParts" :key="part.id" class="case-receipt-row"><div><strong>{{ part.name }}</strong><small>Артикул: {{ part.article || '—' }} · Плановая дата: {{ part.expectedDate || '—' }}</small><small v-if="part.received" class="part-received-date">Поступила: {{ part.receivedAt || 'дата не указана' }}</small></div><button type="button" class="part-receipt-button" :class="part.received ? 'is-received' : ''" @click="toggleCasePartReceived(expandedCaseItem, part)">{{ part.received ? 'Получена · отменить' : 'Отметить как полученную' }}</button></div></div><p v-else class="empty-state">Деталей пока нет.</p></section>

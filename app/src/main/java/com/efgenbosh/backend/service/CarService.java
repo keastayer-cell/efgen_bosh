@@ -83,13 +83,13 @@ public class CarService {
             .filter(car -> matchesStatus(car, status))
             .filter(car -> insurerId == null || insurerId.equals(car.insurerId()))
             .filter(car -> shiftId == null || shiftId.equals(car.shiftId()))
-            .filter(car -> contractorId == null || contractorId.equals(car.contractorId()))
+            .filter(car -> contractorId == null || car.repairCases().stream().anyMatch(item -> contractorId.equals(item.contractorId())))
             .filter(car -> !overdue || car.parts().stream().anyMatch(PartResponse::overdue))
             .toList();
         int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
         long pages = all.isEmpty() ? 0 : (all.size() + safeSize - 1L) / safeSize;
         var statuses = statusDictionary.findAllByActiveTrueOrderBySortOrderAsc().stream().map(item -> new com.efgenbosh.backend.dto.car.RepairCaseStatusResponse(item.getId(), item.getCode(), item.getLabel())).toList();
-        var pageItems = all.subList(from, to).stream().map(car -> car.withRepairCases(filteredCases(car, status))).toList();
+        var pageItems = all.subList(from, to).stream().map(car -> car.withRepairCases(filteredCases(car, status, contractorId))).toList();
         return new CarPageResponse(pageItems, safePage, safeSize, pages, all.size(), summary, statuses);
     }
 
@@ -109,15 +109,14 @@ public class CarService {
         return car.repairCases().stream().findFirst().map(item -> java.util.Arrays.stream(statuses).anyMatch(status -> status.code().equals(item.status()))).orElse(false);
     }
 
-    private List<RepairCaseRegistryResponse> filteredCases(CarResponse car, String requested) {
-        if (requested == null || requested.isBlank() || "all".equalsIgnoreCase(requested)) return car.repairCases();
-        return car.repairCases().stream().filter(item -> switch (requested.toLowerCase()) {
+    private List<RepairCaseRegistryResponse> filteredCases(CarResponse car, String requested, Long contractorId) {
+        return car.repairCases().stream().filter(item -> (contractorId == null || contractorId.equals(item.contractorId())) && (requested == null || requested.isBlank() || "all".equalsIgnoreCase(requested) || switch (requested.toLowerCase()) {
             case "active" -> !RepairCaseStatus.DELIVERED.code().equals(item.status()) && !RepairCaseStatus.CLOSED.code().equals(item.status());
             case "waiting" -> RepairCaseStatus.WAITING_PARTS.code().equals(item.status());
             case "ready" -> RepairCaseStatus.PARTS_RECEIVED.code().equals(item.status());
             case "delivered" -> RepairCaseStatus.DELIVERED.code().equals(item.status());
             default -> requested.equalsIgnoreCase(item.status()) || ("waiting_parts".equalsIgnoreCase(requested) && RepairCaseStatus.WAITING_PARTS.code().equals(item.status())) || ("parts_received".equalsIgnoreCase(requested) && RepairCaseStatus.PARTS_RECEIVED.code().equals(item.status()));
-        }).toList();
+        })).toList();
     }
 
     private boolean matchesQuery(CarResponse car, String query) {
