@@ -282,11 +282,6 @@ async function toggleCasePartReceived(item, part) {
   } catch (error) { showToast(error.message) }
 }
 
-async function updateCaseStatus(status) {
-  const item = selectedRegistryCase.value; if (!item) return
-  try { await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}`, { method: 'PUT', body: JSON.stringify({ caseNumber: item.caseNumber, status, claimNumber: item.claimNumber || '', insurerId: item.insurerId, contractorId: item.contractorId || null, shiftId: null, acceptedAt: null }) }); await loadRepairRegistry(); selectedRegistryCase.value = repairRegistry.value.find((value) => value.id === item.id) || item; showToast('Статус обращения изменён') } catch (error) { showToast(error.message) }
-}
-
 async function runCaseAction(action) {
   const item = selectedRegistryCase.value; if (!item) return
   if (action === 'SCHEDULE_REPAIR' || action === 'DELIVER') { caseActionModal.value = action; caseActionForm.value = { contractorId: item.contractorId ? String(item.contractorId) : '', appointmentDate: '', appointmentTime: '', receivedBy: '', comment: '' }; return }
@@ -384,13 +379,6 @@ async function loadVehicleModels() {
   vehicleModels.value = make ? await requestJson(`/api/v1/directories/vehicle-catalog/models?makeId=${make.id}`).catch(() => []) : []
 }
 
-async function openWorkOrderRegistry() {
-  workOrderRegistryVisible.value = true
-  workOrderRegistryBusy.value = true
-  workOrderRegistryError.value = ''
-  try { workOrderRegistry.value = await requestJson('/api/v1/work-orders') } catch (error) { workOrderRegistryError.value = error.message } finally { workOrderRegistryBusy.value = false }
-}
-
 function downloadWorkOrderCsv() {
   const header = ['ID', 'Заказ-наряд', 'Статус', 'Дата', 'Заказчик', 'Автомобиль', 'Госномер', 'Итого', 'Счёт', 'Акт']
   const rows = workOrderRegistry.value.map((item) => [item.id, item.orderNumber, item.status, item.documentDate, item.customer, item.vehicleName, item.registrationNumber, item.total, item.invoiceNumber, item.actNumber])
@@ -404,8 +392,6 @@ function applyVehicleAlias(id) {
   carForm.value.vehicleName = item.sourceName
   carForm.value.vehicleNameLatin = item.normalizedLatinName
 }
-
-function applyContractor(id) { carForm.value.contractorId = id ? Number(id) : null }
 
 function openContractorForm(item = null) {
   editingContractor.value = item
@@ -462,13 +448,6 @@ function openViewedCase(item) {
   carViewVisible.value = false
   activeSection.value = 'cases'
   openCaseDetail({ ...item, carId: viewCar.value.id })
-}
-
-async function openCarPhotos(car) {
-  photosCar.value = car; photosCase.value = null
-  photosVisible.value = true
-  photosBusy.value = true
-  try { carPhotos.value = await requestJson(`/api/v1/cars/${car.id}/photos`) } catch (error) { showToast(error.message) } finally { photosBusy.value = false }
 }
 
 async function openRepairCasePhotos(caseItem) {
@@ -771,10 +750,6 @@ async function transferDefectRecommendations() {
   showToast('Рекомендации перенесены в заказ-наряд')
 }
 
-function emptyWorkOrderLine() {
-  return { catalogId: '', categoryName: '', name: '', unit: 'шт.', quantity: 1, price: 0, contractorId: '', comment: '', sortOrder: 0 }
-}
-
 function applyCatalogLine(line) {
   const item = workCatalog.value.find((entry) => String(entry.id) === String(line.catalogId))
   if (!item) return
@@ -928,7 +903,7 @@ async function saveCar() {
     const payload = {
       ...carForm.value,
     }
-    const savedCar = await requestJson(path, {
+    await requestJson(path, {
       method: editingCar.value ? 'PUT' : 'POST',
       body: JSON.stringify(payload),
     })
