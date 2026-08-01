@@ -18,6 +18,13 @@ public record CarResponse(
     OffsetDateTime createdAt, OffsetDateTime updatedAt, List<PartResponse> parts,
     List<RepairCaseRegistryResponse> repairCases
 ) {
+    public CarResponse withRepairCases(List<RepairCaseRegistryResponse> values) {
+        return new CarResponse(id, accountingNumber, legacyId, vehicleName, vehicleNameLatin, vehicleMake, vehicleModel,
+            registrationNumber, vin, ownerName, ownerPhone, insuredPerson, claimNumber, insurerId, contractorId,
+            acceptedAt, startedAt, appointmentDate, shiftId, comment, documentFolderUrl, delivered, deliveredAt,
+            status, createdAt, updatedAt, parts, values);
+    }
+
     public static CarResponse from(Car car, LocalDate today) {
         return from(car, today, List.of());
     }

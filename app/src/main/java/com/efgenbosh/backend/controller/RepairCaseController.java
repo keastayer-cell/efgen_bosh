@@ -39,7 +39,7 @@ public class RepairCaseController {
     }
     @PutMapping("/{caseId}")
     public RepairCaseResponse update(@PathVariable Long carId, @PathVariable Long caseId, @Valid @RequestBody RepairCaseRequest request, Authentication authentication) {
-        RepairCase item = findCase(carId, caseId); ensureEditable(item); String previous=item.getStatus(); Long previousContractor = item.getContractorId(); apply(item, request); item.setUpdatedBy(userId(authentication)); RepairCase saved=cases.save(item); if(!previous.equals(saved.getStatus())) record(saved,previous,saved.getStatus(),"Статус обращения изменён",userId(authentication)); if(!java.util.Objects.equals(previousContractor, saved.getContractorId())) record(saved, saved.getStatus(), saved.getStatus(), contractorAction(saved), userId(authentication)); return response(saved);
+        RepairCase item = findCase(carId, caseId); ensureEditable(item); String previous=item.getStatus(); Long previousContractor = item.getContractorId(); apply(item, request); if (!previous.equals(item.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Статус меняется только бизнес-действием обращения."); item.setUpdatedBy(userId(authentication)); RepairCase saved=cases.save(item); if(!java.util.Objects.equals(previousContractor, saved.getContractorId())) record(saved, saved.getStatus(), saved.getStatus(), contractorAction(saved), userId(authentication)); return response(saved);
     }
     @DeleteMapping("/{caseId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long carId, @PathVariable Long caseId) { RepairCase item = cases.findById(caseId).filter(value -> value.getCar().getId().equals(carId)).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Страховой случай не найден.")); ensureEditable(item); cases.delete(item); }
@@ -56,7 +56,7 @@ public class RepairCaseController {
             case "ORDER_PARTS" -> { if (parts.findAllByRepairCase_IdOrderBySortOrderAscIdAsc(caseId).isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Сначала добавьте хотя бы одну деталь."); yield RepairCaseStatus.WAITING_PARTS.code(); }
             case "SCHEDULE_REPAIR" -> RepairCaseStatus.SCHEDULED.code();
             case "START_REPAIR" -> RepairCaseStatus.IN_REPAIR.code();
-            case "FINISH_REPAIR" -> { var order = workOrders.findByRepairCaseId(caseId).orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нельзя завершить ремонт без выполненных работ.")); if (order.getLines() == null || order.getLines().isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нельзя завершить ремонт без выполненных работ."); yield "READY"; }
+            case "FINISH_REPAIR" -> { var order = workOrders.findByRepairCaseId(caseId).orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нельзя завершить ремонт без выполненных работ.")); if (order.getLines() == null || order.getLines().isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нельзя завершить ремонт без выполненных работ."); yield RepairCaseStatus.READY.code(); }
             case "DELIVER" -> RepairCaseStatus.DELIVERED.code();
             case "CLOSE" -> RepairCaseStatus.CLOSED.code();
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестное действие.");

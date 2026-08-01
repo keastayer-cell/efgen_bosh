@@ -206,7 +206,7 @@ async function loadRepairRegistry() {
     carTotalPages.value = result.totalPages
     carTotalItems.value = result.totalItems
     stats.value = result.summary || stats.value
-    repairRegistry.value = result.items.flatMap((car) => (car.repairCases || []).map((item) => ({ ...item, carId: car.id })))
+    repairRegistry.value = result.items.flatMap((car) => (car.repairCases || []).filter((item) => caseStatusFilter.value === 'ALL' || item.status === caseStatusFilter.value).map((item) => ({ ...item, carId: car.id })))
     caseTotalItems.value = result.totalItems
     caseTotalPagesFromApi.value = result.totalPages
     syncCaseRowMeta()
