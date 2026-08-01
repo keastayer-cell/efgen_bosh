@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
     env:
-      VITE_API_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+      VITE_API_BASE_URL: http://139.100.237.243:8088
 
     steps:
       - uses: actions/checkout@v5
@@ -32,12 +32,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Validate deployment configuration
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST_FINGERPRINT: ${{ secrets.VPS_HOST_FINGERPRINT }}
         run: |
-          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_HOST_FINGERPRINT VITE_API_BASE_URL; do
+          for name in VPS_SSH_KEY; do
             [[ -n "${!name:-}" ]] || { echo "Missing GitHub Environment value: $name" >&2; exit 1; }
           done
       - name: Test and package backend
@@ -59,19 +56,19 @@ jobs:
       - name: Upload release
         uses: appleboy/scp-action@v1
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
+          host: 139.100.237.243
+          username: root
           key: ${{ secrets.VPS_SSH_KEY }}
-          fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
+          fingerprint: SHA256:fXqRrJkUlp6RwAZ4EG7H26nakCGnn/qUpsTIcml96+w
           source: release
           target: /tmp/efgen-bosh-${{ github.sha }}
       - name: Deploy release on test server
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
+          host: 139.100.237.243
+          username: root
           key: ${{ secrets.VPS_SSH_KEY }}
-          fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
+          fingerprint: SHA256:fXqRrJkUlp6RwAZ4EG7H26nakCGnn/qUpsTIcml96+w
           script: |
             set -euo pipefail
             release_root=/tmp/efgen-bosh-${{ github.sha }}/release
@@ -79,4 +76,4 @@ jobs:
             RELEASE_ID=${{ github.sha }} LOCAL_BASE_URL=http://127.0.0.1:8088 bash "$release_root/deploy-dev-remote.sh" "$release_root"
             rm -rf /tmp/efgen-bosh-${{ github.sha }}
       - name: Public smoke check
-        run: bash scripts/smoke-check.sh --base-url "${{ vars.PUBLIC_BASE_URL }}" --retries 15
+        run: bash scripts/smoke-check.sh --base-url "http://139.100.237.243:8088" --retries 15

@@ -145,10 +145,11 @@ npm run build
 после остановки Java-сервиса, сохраняет предыдущий runtime, запускает smoke-check
 и при ошибке восстанавливает предыдущий JAR и frontend.
 
-В GitHub Environment `test` должны быть настроены:
+В GitHub Environment `test` должен быть настроен один secret:
 
-- secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_HOST_FINGERPRINT`;
-- variable: `PUBLIC_BASE_URL` — например `http://139.100.237.243:8088`.
+- secret: `VPS_SSH_KEY`.
+
+Хост, пользователь, fingerprint и публичный URL зафиксированы в workflow.
 
 Пароли БД и JWT-секреты остаются только в `/etc/efgen-bosh/test` на сервере.
 
