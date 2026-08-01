@@ -173,12 +173,7 @@ const mappedCars = computed(() => cars.value.map((car) => ({
 const visibleCars = computed(() => mappedCars.value)
 const displayedClientCars = visibleCars
 
-const stats = computed(() => ({
-  active: mappedCars.value.filter((car) => car.status !== 'delivered').length,
-  waiting: mappedCars.value.filter((car) => car.status === 'waiting').length,
-  ready: mappedCars.value.filter((car) => car.status === 'ready').length,
-  delivered: mappedCars.value.filter((car) => car.status === 'delivered').length,
-}))
+const stats = ref({ active: 0, waiting: 0, ready: 0, delivered: 0 })
 
 async function loadCars() {
   carsBusy.value = true
@@ -193,6 +188,7 @@ async function loadCars() {
     cars.value = result.items
     carTotalPages.value = result.totalPages
     carTotalItems.value = result.totalItems
+    stats.value = result.summary || stats.value
   } catch (error) {
     carsError.value = error.message
   } finally {
@@ -208,6 +204,7 @@ async function loadRepairRegistry() {
     cars.value = result.items
     carTotalPages.value = result.totalPages
     carTotalItems.value = result.totalItems
+    stats.value = result.summary || stats.value
     repairRegistry.value = result.items.flatMap((car) => (car.repairCases || []).map((item) => ({ ...item, carId: car.id })))
     caseTotalItems.value = result.totalItems
     caseTotalPagesFromApi.value = result.totalPages

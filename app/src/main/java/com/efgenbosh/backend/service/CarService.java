@@ -13,6 +13,7 @@ import com.efgenbosh.backend.repository.DefectAnalysisRepository;
 import com.efgenbosh.backend.repository.CarHistoryRepository;
 import com.efgenbosh.backend.repository.RepairCaseRepository;
 import com.efgenbosh.backend.dto.car.RepairCaseRegistryResponse;
+import com.efgenbosh.backend.dto.car.CarSearchSummary;
 import com.efgenbosh.backend.domain.CarHistory;
 import jakarta.transaction.Transactional;
 import org.springframework.http.HttpStatus;
@@ -65,7 +66,13 @@ public class CarService {
     @Transactional
     public CarPageResponse searchPage(String query, int page, int size, String status, Long insurerId, Long shiftId, Long contractorId, boolean overdue) {
         int safeSize = Math.max(1, Math.min(size, 100)); int safePage = Math.max(0, page);
-        List<CarResponse> all = search(null).stream()
+        List<CarResponse> allCars = search(null);
+        var summary = new CarSearchSummary(
+            allCars.stream().filter(car -> car.status() != LegacyBusinessRules.CarStatus.DELIVERED).count(),
+            allCars.stream().filter(car -> car.status() == LegacyBusinessRules.CarStatus.WAITING).count(),
+            allCars.stream().filter(car -> car.status() == LegacyBusinessRules.CarStatus.READY).count(),
+            allCars.stream().filter(car -> car.status() == LegacyBusinessRules.CarStatus.DELIVERED).count());
+        List<CarResponse> all = allCars.stream()
             .filter(car -> matchesQuery(car, query))
             .filter(car -> matchesStatus(car, status))
             .filter(car -> insurerId == null || insurerId.equals(car.insurerId()))
@@ -75,7 +82,7 @@ public class CarService {
             .toList();
         int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
         long pages = all.isEmpty() ? 0 : (all.size() + safeSize - 1L) / safeSize;
-        return new CarPageResponse(all.subList(from, to), safePage, safeSize, pages, all.size());
+        return new CarPageResponse(all.subList(from, to), safePage, safeSize, pages, all.size(), summary);
     }
 
     private boolean matchesStatus(CarResponse car, String requested) {
@@ -85,6 +92,10 @@ public class CarService {
             case "waiting" -> car.status() == LegacyBusinessRules.CarStatus.WAITING;
             case "ready" -> car.status() == LegacyBusinessRules.CarStatus.READY;
             case "delivered" -> car.status() == LegacyBusinessRules.CarStatus.DELIVERED;
+            case "waiting_parts" -> car.status() == LegacyBusinessRules.CarStatus.WAITING
+                || car.repairCases().stream().anyMatch(item -> requested.equalsIgnoreCase(item.status()));
+            case "parts_received" -> car.status() == LegacyBusinessRules.CarStatus.READY
+                || car.repairCases().stream().anyMatch(item -> requested.equalsIgnoreCase(item.status()));
             default -> car.repairCases().stream().anyMatch(item -> requested.equalsIgnoreCase(item.status()));
         };
     }
