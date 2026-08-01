@@ -304,14 +304,14 @@ async function toggleCasePartReceived(item, part) {
 async function runCaseAction(action) {
   const item = selectedRegistryCase.value; if (!item) return
   if (action === 'CLOSE') return
-  if (action === 'SCHEDULE_REPAIR' || action === 'DELIVER') { if (action === 'SCHEDULE_REPAIR') await loadContractors(); caseActionModal.value = action; caseActionForm.value = { contractorId: item.contractorId ? String(item.contractorId) : '', appointmentDate: '', appointmentTime: '', receivedBy: '', comment: '' }; return }
+  if (action === 'SCHEDULE_REPAIR' || action === 'DELIVER') { if (action === 'SCHEDULE_REPAIR') await loadContractors(); caseActionModal.value = action; caseActionForm.value = { contractorId: item.contractorId ? String(item.contractorId) : '', appointmentDate: '', appointmentTime: '', receivedBy: action === 'DELIVER' ? 'Система' : '', comment: '' }; return }
   try { const updated = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/actions/${action}`, { method: 'POST' }); selectedRegistryCase.value = updated; await loadRepairRegistry(); showToast('Действие выполнено') } catch (error) { showToast(error.message) }
 }
 
 async function submitCaseAction() {
   const item = selectedRegistryCase.value; if (!item) return
   const action = caseActionModal.value
-  try { const updated = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/actions/${action}`, { method: 'POST', body: JSON.stringify(caseActionForm.value) }); selectedRegistryCase.value = updated; caseActionModal.value = null; await loadRepairRegistry(); showToast('Действие сохранено') } catch (error) { showToast(error.message) }
+  try { const updated = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/actions/${action}`, { method: 'POST', body: JSON.stringify(action === 'DELIVER' ? { ...caseActionForm.value, receivedBy: '' } : caseActionForm.value) }); selectedRegistryCase.value = updated; caseActionModal.value = null; await loadRepairRegistry(); showToast('Действие сохранено') } catch (error) { showToast(error.message) }
 }
 
 function openCaseDocuments() { caseDocumentsVisible.value = true }
@@ -1634,6 +1634,7 @@ watch(paginatedRepairCases, syncCaseRowMeta)
 .case-history-list { display: grid; gap: 8px; }
 .case-history-list div { display: flex; gap: 16px; padding: 12px; border-bottom: 1px solid var(--line); }
 .case-history-list strong { min-width: 150px; color: var(--muted); font-size: 11px; }
+.compact-modal label:has(input[placeholder="ФИО получателя"]) { display: none; }
 .client-vin { color: var(--muted); font-family: Consolas, monospace; font-size: 11px; }
 .insurance-case-create-modal .form-photo-preview { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .insurance-case-create-modal .form-photo-preview div { display: grid; gap: 4px; width: 92px; color: var(--muted); font-size: 10px; }
