@@ -268,6 +268,8 @@ async function saveCaseContractor() {
     })
     caseDetailRecord.value = saved
     selectedRegistryCase.value = { ...selectedRegistryCase.value, contractorId: saved.contractorId }
+    const history = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/history`)
+    carHistory.value = history.map((event) => ({ ...event, actor: event.createdByName || 'Система', details: `${event.createdByName || 'Система'} · ${event.comment || `${statusLabel(event.previousStatus)} → ${statusLabel(event.newStatus)}`}` }))
     await Promise.all([loadRepairRegistry(), loadRepairCaseStatuses()])
     showToast('Исполнитель заменён')
   } catch (error) { showToast(error.message) }
