@@ -36,7 +36,7 @@ public class CarController {
     public List<CarResponse> search(@RequestParam(required = false) String q) { return service.search(q); }
 
     @GetMapping("/search/page")
-    public CarPageResponse searchPage(@RequestParam(required = false) String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "25") int size) { return service.searchPage(q, page, size); }
+    public CarPageResponse searchPage(@RequestParam(required = false) String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "25") int size, @RequestParam(required = false) String status, @RequestParam(required = false) Long insurerId, @RequestParam(required = false) Long shiftId, @RequestParam(required = false) Long contractorId, @RequestParam(defaultValue = "false") boolean overdue) { return service.searchPage(q, page, size, status, insurerId, shiftId, contractorId, overdue); }
 
     @GetMapping("/{id}")
     public CarResponse findById(@PathVariable Long id) { return service.findById(id); }

@@ -59,11 +59,29 @@ public class CarService {
     }
 
     @Transactional
-    public CarPageResponse searchPage(String query, int page, int size) {
+    public CarPageResponse searchPage(String query, int page, int size, String status, Long insurerId, Long shiftId, Long contractorId, boolean overdue) {
         int safeSize = Math.max(1, Math.min(size, 100)); int safePage = Math.max(0, page);
-        List<CarResponse> all = search(query); int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
+        List<CarResponse> all = search(query).stream()
+            .filter(car -> matchesStatus(car, status))
+            .filter(car -> insurerId == null || insurerId.equals(car.insurerId()))
+            .filter(car -> shiftId == null || shiftId.equals(car.shiftId()))
+            .filter(car -> contractorId == null || contractorId.equals(car.contractorId()))
+            .filter(car -> !overdue || car.parts().stream().anyMatch(PartResponse::overdue))
+            .toList();
+        int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
         long pages = all.isEmpty() ? 0 : (all.size() + safeSize - 1L) / safeSize;
         return new CarPageResponse(all.subList(from, to), safePage, safeSize, pages, all.size());
+    }
+
+    private boolean matchesStatus(CarResponse car, String requested) {
+        if (requested == null || requested.isBlank() || "all".equalsIgnoreCase(requested)) return true;
+        return switch (requested.toLowerCase()) {
+            case "active" -> car.status() != LegacyBusinessRules.CarStatus.DELIVERED;
+            case "waiting" -> car.status() == LegacyBusinessRules.CarStatus.WAITING;
+            case "ready" -> car.status() == LegacyBusinessRules.CarStatus.READY;
+            case "delivered" -> car.status() == LegacyBusinessRules.CarStatus.DELIVERED;
+            default -> false;
+        };
     }
 
     @Transactional

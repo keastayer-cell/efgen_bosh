@@ -168,19 +168,8 @@ const mappedCars = computed(() => cars.value.map((car) => ({
   status: car.status.toLowerCase(),
 })))
 
-const visibleCars = computed(() => mappedCars.value.filter((car) => {
-  const matchesFilter = activeFilter.value === 'all'
-    ? true
-    : activeFilter.value === car.status
-  const matchesInsurer = !insurerFilter.value || String(car.insurerId || '') === insurerFilter.value
-  const matchesShift = !shiftFilter.value || String(car.shiftId || '') === shiftFilter.value
-  const matchesContractor = !contractorFilter.value || String(car.contractorId || '') === contractorFilter.value
-  const matchesOverdue = !overduePartsOnly.value || car.parts?.some((part) => !part.received && part.expectedDate && part.expectedDate < new Date().toISOString().slice(0, 10))
-  const query = search.value.trim().toLowerCase()
-  return matchesFilter && matchesInsurer && matchesShift && matchesContractor && matchesOverdue && (!query || Object.values(car).some((value) => String(value).toLowerCase().includes(query)))
-}))
-
-const displayedClientCars = computed(() => search.value.trim() ? visibleCars.value : visibleCars.value.slice(carPage.value * carPageSize.value, (carPage.value + 1) * carPageSize.value))
+const visibleCars = computed(() => mappedCars.value)
+const displayedClientCars = visibleCars
 
 const stats = computed(() => ({
   active: mappedCars.value.filter((car) => car.status !== 'delivered').length,
@@ -193,17 +182,15 @@ async function loadCars() {
   carsBusy.value = true
   carsError.value = ''
   try {
-    if (search.value.trim()) {
-      const result = await requestJson(`/api/v1/cars/search/page?q=${encodeURIComponent(search.value.trim())}&page=${carPage.value}&size=${carPageSize.value}`)
-      cars.value = result.items
-      carTotalPages.value = result.totalPages
-      carTotalItems.value = result.totalItems
-    } else {
-      cars.value = await requestJson('/api/v1/cars')
-      carPage.value = 0
-      carTotalPages.value = 0
-      carTotalItems.value = cars.value.length
-    }
+    const params = new URLSearchParams({ page: String(carPage.value), size: String(carPageSize.value), status: activeFilter.value, overdue: String(overduePartsOnly.value) })
+    if (search.value.trim()) params.set('q', search.value.trim())
+    if (insurerFilter.value) params.set('insurerId', insurerFilter.value)
+    if (shiftFilter.value) params.set('shiftId', shiftFilter.value)
+    if (contractorFilter.value) params.set('contractorId', contractorFilter.value)
+    const result = await requestJson(`/api/v1/cars/search/page?${params.toString()}`)
+    cars.value = result.items
+    carTotalPages.value = result.totalPages
+    carTotalItems.value = result.totalItems
   } catch (error) {
     carsError.value = error.message
   } finally {
@@ -342,9 +329,9 @@ const caseRemainingTasks = computed(() => {
 })
 
 function changeCarPage(page) {
-  const totalPages = search.value.trim() ? carTotalPages.value : Math.ceil(visibleCars.value.length / carPageSize.value)
+  const totalPages = carTotalPages.value
   carPage.value = Math.max(0, Math.min(page, Math.max(0, totalPages - 1)))
-  if (search.value.trim()) loadCars()
+  loadCars()
 }
 
 async function loadDirectories() {
@@ -1123,7 +1110,7 @@ onUnmounted(() => {
   window.clearTimeout(toastTimer)
 })
 
-watch(search, () => { carPage.value = 0; window.clearTimeout(window.__efgenSearchTimer); window.__efgenSearchTimer = window.setTimeout(loadCars, 250) })
+watch([search, activeFilter, insurerFilter, shiftFilter, contractorFilter, overduePartsOnly], () => { carPage.value = 0; window.clearTimeout(window.__efgenSearchTimer); window.__efgenSearchTimer = window.setTimeout(loadCars, 250) })
 watch([caseSearch, caseStatusFilter], () => { casePage.value = 0; expandedCaseId.value = null })
 watch(paginatedRepairCases, syncCaseRowMeta)
 </script>
@@ -1224,7 +1211,7 @@ watch(paginatedRepairCases, syncCaseRowMeta)
         <div class="toolbar"><label class="search-field"><span>⌕</span><input v-model="search" type="search" placeholder="Поиск по VIN, госномеру, ФИО или телефону" /></label><button class="button button-primary" type="button" @click="openCarForm">＋ Добавить автомобиль</button></div>
         <div class="list-head clients-list-head"><span>ID записи</span><span>Автомобиль</span><span>VIN</span><span>Госномер</span><span>Владелец</span><span>Телефон</span><span>Создан</span></div>
         <div class="cars-list"><article v-for="car in displayedClientCars" :key="car.id" class="car-row client-row"><div class="cell client-id-cell"><strong>{{ car.id }}</strong><button class="row-chevron client-row-chevron" type="button" aria-label="Открыть карточку автомобиля" @click="openCarView(car)">⌄</button></div><div class="cell"><strong>{{ car.vehicle }}</strong><small>Автомобиль №{{ car.number }}</small></div><div class="cell client-vin">{{ car.vin }}</div><div class="cell">{{ car.registration }}</div><div class="cell">{{ car.ownerName || '—' }}</div><div class="cell">{{ car.ownerPhone || '—' }}</div><div class="cell muted-cell">{{ car.record }}</div></article><p v-if="!displayedClientCars.length" class="empty-state">Клиенты сервиса пока не созданы.</p></div>
-        <div v-if="visibleCars.length > carPageSize" class="pagination-toolbar" aria-label="Пагинация клиентов"><span>Найдено: {{ visibleCars.length }}</span><button type="button" class="link-button" :disabled="carPage === 0" @click="changeCarPage(carPage - 1)">← Назад</button><strong>Страница {{ carPage + 1 }} из {{ search.trim() ? carTotalPages : Math.ceil(visibleCars.length / carPageSize) }}</strong><button type="button" class="link-button" :disabled="carPage >= (search.trim() ? carTotalPages : Math.ceil(visibleCars.length / carPageSize)) - 1" @click="changeCarPage(carPage + 1)">Вперёд →</button></div>
+        <div v-if="carTotalPages > 1" class="pagination-toolbar" aria-label="Пагинация клиентов"><span>Найдено: {{ carTotalItems }}</span><button type="button" class="link-button" :disabled="carPage === 0" @click="changeCarPage(carPage - 1)">← Назад</button><strong>Страница {{ carPage + 1 }} из {{ carTotalPages }}</strong><button type="button" class="link-button" :disabled="carPage >= carTotalPages - 1" @click="changeCarPage(carPage + 1)">Вперёд →</button></div>
       </section>
       <section v-if="false && activeSection === 'clients'" class="workspace">
         <div class="toolbar">
@@ -1257,11 +1244,11 @@ watch(paginatedRepairCases, syncCaseRowMeta)
           </article>
           <div v-if="!carsBusy && !carsError && !visibleCars.length" class="empty-state">По выбранному фильтру автомобили не найдены.</div>
         </div>
-        <div v-if="!search.trim() ? visibleCars.length > carPageSize : carTotalPages > 1" class="pagination-toolbar" aria-label="Пагинация клиентов">
+        <div v-if="carTotalPages > 1" class="pagination-toolbar" aria-label="Пагинация клиентов">
           <span>Найдено: {{ carTotalItems }}</span>
           <button type="button" class="link-button" :disabled="carPage === 0" @click="changeCarPage(carPage - 1)">← Назад</button>
-          <strong>Страница {{ carPage + 1 }} из {{ search.trim() ? carTotalPages : Math.ceil(visibleCars.length / carPageSize) }}</strong>
-          <button type="button" class="link-button" :disabled="carPage >= (search.trim() ? carTotalPages : Math.ceil(visibleCars.length / carPageSize)) - 1" @click="changeCarPage(carPage + 1)">Вперёд →</button>
+          <strong>Страница {{ carPage + 1 }} из {{ carTotalPages }}</strong>
+          <button type="button" class="link-button" :disabled="carPage >= carTotalPages - 1" @click="changeCarPage(carPage + 1)">Вперёд →</button>
         </div>
       </section>
     </main>
