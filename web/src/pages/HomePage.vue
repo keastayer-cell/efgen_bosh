@@ -1244,9 +1244,14 @@ watch(paginatedRepairCases, syncCaseRowMeta)
     <header class="topbar">
       <div class="brand"><span class="brand-mark">B</span><span><strong>Bosh: кузовной ремонт</strong><small>Автомобили и запчасти</small></span></div>
       <div class="topbar-actions">
-        <button class="button button-cloud" type="button" @click="activeSection = 'cases'">Страховые случаи</button>
-        <button class="button button-cloud" type="button" @click="activeSection = 'clients'">Клиенты сервиса</button>
-        <button class="button button-cloud" @click="openStub('Настройки')">Настройки</button>
+        <nav class="topbar-nav-group topbar-work-nav" aria-label="Рабочие разделы">
+          <button class="button button-cloud" :class="{ 'is-current': activeSection === 'cases' }" type="button" @click="activeSection = 'cases'">Страховые случаи</button>
+          <button class="button button-cloud" :class="{ 'is-current': activeSection === 'clients' }" type="button" @click="activeSection = 'clients'">Клиенты сервиса</button>
+        </nav>
+        <div class="topbar-nav-divider" aria-hidden="true"></div>
+        <nav class="topbar-nav-group topbar-system-nav" aria-label="Системные разделы">
+          <button class="button button-cloud" type="button" @click="openStub('Настройки')">Настройки</button>
+        </nav>
         <button class="button button-primary" @click="openCarForm">＋ Добавить автомобиль</button>
         <button class="user-chip" title="Выйти" @click="logout">{{ user?.name || user?.email || 'Пользователь' }} · Выйти</button>
       </div>
