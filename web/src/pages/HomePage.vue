@@ -24,6 +24,8 @@ const caseSearch = ref('')
 const caseStatusFilter = ref('ALL')
 const casePage = ref(0)
 const casePageSize = ref(20)
+const caseTotalItems = ref(0)
+const caseTotalPagesFromApi = ref(0)
 const insurers = ref([])
 const suppliers = ref([])
 const shifts = ref([])
@@ -199,7 +201,18 @@ async function loadCars() {
 }
 
 async function loadRepairRegistry() {
-  try { repairRegistry.value = await requestJson('/api/v1/repair-cases'); syncCaseRowMeta() } catch (error) { showToast(`Страховые случаи не загружены: ${error.message}`) }
+  try {
+    const params = new URLSearchParams({ page: String(casePage.value), size: String(casePageSize.value), status: caseStatusFilter.value === 'ALL' ? 'all' : caseStatusFilter.value })
+    if (caseSearch.value.trim()) params.set('q', caseSearch.value.trim())
+    const result = await requestJson(`/api/v1/cars/search/page?${params.toString()}`)
+    cars.value = result.items
+    carTotalPages.value = result.totalPages
+    carTotalItems.value = result.totalItems
+    repairRegistry.value = result.items.flatMap((car) => (car.repairCases || []).map((item) => ({ ...item, carId: car.id })))
+    caseTotalItems.value = result.totalItems
+    caseTotalPagesFromApi.value = result.totalPages
+    syncCaseRowMeta()
+  } catch (error) { showToast(`Страховые случаи не загружены: ${error.message}`) }
 }
 
 async function openCaseDetail(item) {
@@ -283,13 +296,10 @@ async function submitCaseAction() {
 
 function openCaseDocuments() { caseDocumentsVisible.value = true }
 
-const filteredRepairCases = computed(() => {
-  const query = caseSearch.value.trim().toLowerCase()
-  return repairRegistry.value.filter((item) => (caseStatusFilter.value === 'ALL' || item.status === caseStatusFilter.value) && (!query || [item.vin, item.registrationNumber, item.caseNumber, item.claimNumber, item.ownerName].some((value) => String(value || '').toLowerCase().includes(query))))
-})
-const visibleRepairCases = computed(() => filteredRepairCases.value.slice(casePage.value * casePageSize.value, (casePage.value + 1) * casePageSize.value))
+const filteredRepairCases = computed(() => repairRegistry.value)
+const visibleRepairCases = computed(() => repairRegistry.value)
 const paginatedRepairCases = visibleRepairCases
-const caseTotalPages = computed(() => Math.max(1, Math.ceil(filteredRepairCases.value.length / casePageSize.value)))
+const caseTotalPages = computed(() => Math.max(1, caseTotalPagesFromApi.value))
 const expandedCaseItem = computed(() => visibleRepairCases.value.find((item) => item.id === expandedCaseId.value) || null)
 
 function syncCaseRowMeta() {
@@ -413,6 +423,7 @@ function openStandaloneWorkOrder() {
 }
 
 function openCarForm() {
+  loadDirectories()
   modal.value = null
   editingCar.value = null
   carForm.value = emptyCarForm()
@@ -519,6 +530,7 @@ async function deleteCarPhoto(photo) {
 }
 
 function openDirectories() {
+  loadDirectories()
   modal.value = null
   directoryForm.value = { name: '', code: '', categoryName: '', defaultUnit: 'н/ч', inn: '', address: '', phone: '', note: '' }
   directoriesVisible.value = true
@@ -1023,7 +1035,7 @@ async function submitLogin() {
     localStorage.setItem(userKey, JSON.stringify(result))
     token.value = result.token
     user.value = result
-    await Promise.all([loadCars(), loadDirectories(), loadRepairRegistry()])
+    await loadRepairRegistry()
   } catch (error) {
     authError.value = error.message
   } finally {
@@ -1096,8 +1108,6 @@ onMounted(() => {
   document.addEventListener('change', handleWorkLineChange)
   document.addEventListener('click', (event) => { const row = event.target.closest('.case-row'); if (!row) return; const index = Array.from(document.querySelectorAll('.case-row')).indexOf(row); const item = paginatedRepairCases.value[index]; if (!item) return; if (event.target.closest('.case-row-details-button')) { event.stopPropagation(); toggleCaseRow(item) } else openCaseDetail(item) })
   if (token.value) {
-    loadCars()
-    loadDirectories()
     loadRepairRegistry()
   }
   syncCaseRowMeta()
@@ -1111,7 +1121,16 @@ onUnmounted(() => {
 })
 
 watch([search, activeFilter, insurerFilter, shiftFilter, contractorFilter, overduePartsOnly], () => { carPage.value = 0; window.clearTimeout(window.__efgenSearchTimer); window.__efgenSearchTimer = window.setTimeout(loadCars, 250) })
-watch([caseSearch, caseStatusFilter], () => { casePage.value = 0; expandedCaseId.value = null })
+watch(activeSection, (section) => {
+  if (section === 'clients') loadCars()
+  if (section === 'settings') loadDirectories()
+})
+watch([caseSearch, caseStatusFilter], () => {
+  casePage.value = 0
+  expandedCaseId.value = null
+  window.clearTimeout(window.__efgenCaseTimer)
+  window.__efgenCaseTimer = window.setTimeout(loadRepairRegistry, 250)
+})
 watch(paginatedRepairCases, syncCaseRowMeta)
 </script>
 
@@ -1206,7 +1225,7 @@ watch(paginatedRepairCases, syncCaseRowMeta)
         <div class="cars-list"><template v-for="item in visibleRepairCases" :key="item.id"><article class="car-row case-row" :class="{ 'is-selected': expandedCaseId === item.id }"><div class="cell"><strong>{{ item.vehicleMake }} {{ item.vehicleModel }}</strong><small>VIN {{ item.vin }}</small><small>{{ item.registrationNumber }} · {{ item.ownerName }} · {{ item.ownerPhone }}</small></div><div class="cell"><strong>Случай №{{ item.caseNumber }}</strong></div><div class="cell"><span class="insurance-pill">{{ insurers.find((insurer) => insurer.id === item.insurerId)?.name || 'Страховая не указана' }}</span></div><div class="cell">{{ contractors.find((contractor) => contractor.id === item.contractorId)?.shortName || '—' }}</div><div class="cell case-parts-progress-cell"><div class="parts-progress-ring" :style="{ '--parts-progress': item.partsTotal ? (item.partsReceived / item.partsTotal) * 100 + '%' : '0%' }"><span>{{ item.partsReceived || 0 }}/{{ item.partsTotal || 0 }}</span></div><div><strong>{{ item.partsReceived || 0 }} из {{ item.partsTotal || 0 }}</strong><small>{{ item.partsTotal ? (item.partsReceived === item.partsTotal ? 'Поступление по графику' : 'Ожидание деталей') : 'Детали не добавлены' }}</small></div></div><div class="cell"><span class="case-status">{{ statusLabel(item.status) }}</span></div><div class="cell muted-cell"><span>{{ item.createdAt ? item.createdAt.slice(0, 10) : '—' }}</span><button type="button" class="case-row-details-button" @click.stop="toggleCaseRow(item)">{{ expandedCaseId === item.id ? 'Скрыть детали' : 'Открыть' }}</button></div></article><section v-if="expandedCaseId === item.id" class="case-row-details"><div class="case-row-details-head"><strong>Детали страхового случая №{{ item.caseNumber }}</strong><span>{{ expandedCaseParts.length }} деталей · {{ expandedCaseParts.filter((part) => part.received).length }} получено</span></div><div v-if="expandedCaseParts.length" class="case-parts-table"><div class="case-parts-table-head"><span>Деталь</span><span>Артикул</span><span>Поставщик</span><span>Плановая поставка</span><span>Статус</span><span>Поступила</span></div><div v-for="part in expandedCaseParts" :key="part.id" class="case-parts-table-row"><span><strong>{{ part.name }}</strong><small>{{ part.comment || 'Без комментария' }}</small></span><span>{{ part.article || '—' }}</span><span>{{ suppliers.find((supplier) => supplier.id === part.supplierId)?.name || '—' }}</span><span>{{ part.expectedDate || '—' }}</span><span class="case-part-status-cell"><div class="case-part-status-actions"><b :class="part.received ? 'part-received' : 'part-waiting'">{{ part.received ? 'Получена' : 'Ожидается' }}</b><button type="button" class="part-receipt-button" :class="{ 'is-received': part.received }" @click.stop="toggleCasePartReceived(item, part)">{{ part.received ? 'Отменить' : 'Отметить поступление' }}</button></div></span><span class="case-received-date">{{ part.received ? part.receivedAt : '—' }}</span></div></div><p v-else class="empty-state">У этого страхового случая деталей пока нет.</p></section></template><p v-if="!visibleRepairCases.length" class="empty-state">Страховых случаев пока нет. Создайте первый через «＋ Ремонт».</p></div>
         <section v-if="expandedCaseItem" class="case-receipt-panel"><div class="case-receipt-head"><div><strong>Детали страхового случая №{{ expandedCaseItem.caseNumber }}</strong><span>{{ statusLabel(expandedCaseItem.status) }}</span></div><small>Отметьте поступление — дата поступления сохранится автоматически.</small></div><div v-if="expandedCaseParts.length" class="case-receipt-list"><div v-for="part in expandedCaseParts" :key="part.id" class="case-receipt-row"><div><strong>{{ part.name }}</strong><small>Артикул: {{ part.article || '—' }} · Плановая дата: {{ part.expectedDate || '—' }}</small><small v-if="part.received" class="part-received-date">Поступила: {{ part.receivedAt || 'дата не указана' }}</small></div><button type="button" class="part-receipt-button" :class="part.received ? 'is-received' : ''" @click="toggleCasePartReceived(expandedCaseItem, part)">{{ part.received ? 'Получена · отменить' : 'Отметить как полученную' }}</button></div></div><p v-else class="empty-state">Деталей пока нет.</p></section>
       </section>
-      <div v-if="activeSection === 'cases' && filteredRepairCases.length" class="pagination-toolbar case-pagination" aria-label="Пагинация страховых случаев"><span>Найдено: {{ filteredRepairCases.length }}</span><button type="button" class="link-button" :disabled="casePage === 0" @click="casePage--">← Назад</button><strong>Страница {{ casePage + 1 }} из {{ caseTotalPages }}</strong><button type="button" class="link-button" :disabled="casePage >= caseTotalPages - 1" @click="casePage++">Вперёд →</button></div>
+      <div v-if="activeSection === 'cases' && filteredRepairCases.length" class="pagination-toolbar case-pagination" aria-label="Пагинация страховых случаев"><span>Найдено: {{ caseTotalItems }}</span><button type="button" class="link-button" :disabled="casePage === 0" @click="casePage--; loadRepairRegistry()">← Назад</button><strong>Страница {{ casePage + 1 }} из {{ caseTotalPages }}</strong><button type="button" class="link-button" :disabled="casePage >= caseTotalPages - 1" @click="casePage++; loadRepairRegistry()">Вперёд →</button></div>
       <section v-if="activeSection === 'clients'" class="workspace clients-workspace">
         <div class="toolbar"><label class="search-field"><span>⌕</span><input v-model="search" type="search" placeholder="Поиск по VIN, госномеру, ФИО или телефону" /></label><button class="button button-primary" type="button" @click="openCarForm">＋ Добавить автомобиль</button></div>
         <div class="list-head clients-list-head"><span>ID записи</span><span>Автомобиль</span><span>VIN</span><span>Госномер</span><span>Владелец</span><span>Телефон</span><span>Создан</span></div>

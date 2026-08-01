@@ -15,9 +15,14 @@ public record CarResponse(
     LocalDate acceptedAt, LocalDate startedAt, LocalDate appointmentDate,
     Long shiftId, String comment, String documentFolderUrl, boolean delivered,
     LocalDate deliveredAt, LegacyBusinessRules.CarStatus status,
-    OffsetDateTime createdAt, OffsetDateTime updatedAt, List<PartResponse> parts
+    OffsetDateTime createdAt, OffsetDateTime updatedAt, List<PartResponse> parts,
+    List<RepairCaseRegistryResponse> repairCases
 ) {
     public static CarResponse from(Car car, LocalDate today) {
+        return from(car, today, List.of());
+    }
+
+    public static CarResponse from(Car car, LocalDate today, List<RepairCaseRegistryResponse> repairCases) {
         List<PartResponse> parts = car.getParts().stream()
             .map(part -> PartResponse.from(part, today)).toList();
         var status = LegacyBusinessRules.carStatus(
@@ -28,6 +33,6 @@ public record CarResponse(
             car.getContractorId(), car.getAcceptedAt(), car.getStartedAt(),
             car.getAppointmentDate(), car.getShiftId(), car.getComment(),
             car.getDocumentFolderUrl(), car.isDelivered(), car.getDeliveredAt(), status,
-            car.getCreatedAt(), car.getUpdatedAt(), parts);
+            car.getCreatedAt(), car.getUpdatedAt(), parts, repairCases);
     }
 }

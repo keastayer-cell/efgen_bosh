@@ -11,6 +11,8 @@ import com.efgenbosh.backend.repository.PartRepository;
 import com.efgenbosh.backend.repository.WorkOrderRepository;
 import com.efgenbosh.backend.repository.DefectAnalysisRepository;
 import com.efgenbosh.backend.repository.CarHistoryRepository;
+import com.efgenbosh.backend.repository.RepairCaseRepository;
+import com.efgenbosh.backend.dto.car.RepairCaseRegistryResponse;
 import com.efgenbosh.backend.domain.CarHistory;
 import jakarta.transaction.Transactional;
 import org.springframework.http.HttpStatus;
@@ -29,13 +31,15 @@ public class CarService {
     private final WorkOrderRepository workOrders;
     private final DefectAnalysisRepository defectAnalyses;
     private final CarHistoryRepository history;
+    private final RepairCaseRepository repairCases;
 
-    public CarService(CarRepository cars, PartRepository parts, WorkOrderRepository workOrders, DefectAnalysisRepository defectAnalyses, CarHistoryRepository history) {
+    public CarService(CarRepository cars, PartRepository parts, WorkOrderRepository workOrders, DefectAnalysisRepository defectAnalyses, CarHistoryRepository history, RepairCaseRepository repairCases) {
         this.cars = cars;
         this.parts = parts;
         this.workOrders = workOrders;
         this.defectAnalyses = defectAnalyses;
         this.history = history;
+        this.repairCases = repairCases;
     }
 
     @Transactional
@@ -61,7 +65,8 @@ public class CarService {
     @Transactional
     public CarPageResponse searchPage(String query, int page, int size, String status, Long insurerId, Long shiftId, Long contractorId, boolean overdue) {
         int safeSize = Math.max(1, Math.min(size, 100)); int safePage = Math.max(0, page);
-        List<CarResponse> all = search(query).stream()
+        List<CarResponse> all = search(null).stream()
+            .filter(car -> matchesQuery(car, query))
             .filter(car -> matchesStatus(car, status))
             .filter(car -> insurerId == null || insurerId.equals(car.insurerId()))
             .filter(car -> shiftId == null || shiftId.equals(car.shiftId()))
@@ -80,8 +85,23 @@ public class CarService {
             case "waiting" -> car.status() == LegacyBusinessRules.CarStatus.WAITING;
             case "ready" -> car.status() == LegacyBusinessRules.CarStatus.READY;
             case "delivered" -> car.status() == LegacyBusinessRules.CarStatus.DELIVERED;
-            default -> false;
+            default -> car.repairCases().stream().anyMatch(item -> requested.equalsIgnoreCase(item.status()));
         };
+    }
+
+    private boolean matchesQuery(CarResponse car, String query) {
+        String needle = query == null ? "" : query.trim().toLowerCase();
+        return needle.isBlank()
+            || String.valueOf(car.accountingNumber()).contains(needle)
+            || value(car.vehicleName()).toLowerCase().contains(needle)
+            || value(car.vehicleMake()).toLowerCase().contains(needle)
+            || value(car.vehicleModel()).toLowerCase().contains(needle)
+            || value(car.registrationNumber()).toLowerCase().contains(needle)
+            || value(car.vin()).toLowerCase().contains(needle)
+            || value(car.ownerPhone()).toLowerCase().contains(needle)
+            || value(car.ownerName()).toLowerCase().contains(needle)
+            || value(car.claimNumber()).toLowerCase().contains(needle)
+            || car.repairCases().stream().anyMatch(item -> value(item.caseNumber()).toLowerCase().contains(needle) || value(item.claimNumber()).toLowerCase().contains(needle));
     }
 
     @Transactional
@@ -187,7 +207,13 @@ public class CarService {
             new ResponseStatusException(HttpStatus.NOT_FOUND, "Запчасть не найдена."));
     }
 
-    private CarResponse response(Car car) { return CarResponse.from(car, LocalDate.now()); }
+    private CarResponse response(Car car) {
+        var registryCases = repairCases.findAllByCar_IdOrderByCreatedAtDesc(car.getId()).stream().map(item -> {
+            var caseParts = parts.findAllByRepairCase_IdOrderBySortOrderAscIdAsc(item.getId());
+            return RepairCaseRegistryResponse.from(item, caseParts.size(), (int) caseParts.stream().filter(Part::isReceived).count());
+        }).toList();
+        return CarResponse.from(car, LocalDate.now(), registryCases);
+    }
 
     private void apply(Car car, CarRequest r) {
         car.setLegacyId(r.legacyId());
