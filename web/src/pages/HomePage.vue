@@ -223,6 +223,7 @@ async function loadRepairCaseStatuses() {
 }
 
 async function openCaseDetail(item) {
+  await Promise.all([loadContractors(), loadInsurers()])
   selectedRegistryCase.value = item
   caseDetailRecord.value = null
   caseContractorId.value = item.contractorId ? String(item.contractorId) : ''
@@ -291,7 +292,7 @@ async function toggleCasePartReceived(item, part) {
 
 async function runCaseAction(action) {
   const item = selectedRegistryCase.value; if (!item) return
-  if (action === 'SCHEDULE_REPAIR' || action === 'DELIVER') { caseActionModal.value = action; caseActionForm.value = { contractorId: item.contractorId ? String(item.contractorId) : '', appointmentDate: '', appointmentTime: '', receivedBy: '', comment: '' }; return }
+  if (action === 'SCHEDULE_REPAIR' || action === 'DELIVER') { if (action === 'SCHEDULE_REPAIR') await loadContractors(); caseActionModal.value = action; caseActionForm.value = { contractorId: item.contractorId ? String(item.contractorId) : '', appointmentDate: '', appointmentTime: '', receivedBy: '', comment: '' }; return }
   try { const updated = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/actions/${action}`, { method: 'POST' }); selectedRegistryCase.value = updated; await loadRepairRegistry(); showToast('Действие выполнено') } catch (error) { showToast(error.message) }
 }
 
@@ -374,6 +375,29 @@ async function loadDirectories() {
   } catch (error) {
     showToast(`Справочники не загружены: ${error.message}`)
   }
+}
+
+async function loadContractors() {
+  if (contractors.value.length) return
+  try {
+    const items = await requestJson('/api/v1/contractors')
+    contractors.value = items.map((item) => ({ ...item, code: item.phone || item.code }))
+  } catch (error) { showToast(`Исполнители не загружены: ${error.message}`) }
+}
+
+async function loadInsurers() {
+  if (insurers.value.length) return
+  try { insurers.value = await requestJson('/api/v1/directories/insurers') } catch (error) { showToast(`Страховые компании не загружены: ${error.message}`) }
+}
+
+async function loadSuppliers() {
+  if (suppliers.value.length) return
+  try { suppliers.value = await requestJson('/api/v1/directories/suppliers') } catch (error) { showToast(`Поставщики не загружены: ${error.message}`) }
+}
+
+async function loadShifts() {
+  if (shifts.value.length) return
+  try { shifts.value = await requestJson('/api/v1/directories/shifts') } catch (error) { showToast(`Смены не загружены: ${error.message}`) }
 }
 
 async function loadVehicleMakes() {
@@ -487,6 +511,7 @@ function searchRepairVehicle() {
   repairVehicleCandidates.value = mappedCars.value.filter((car) => !query || String(car.vin || '').toLowerCase().includes(query))
 }
 async function chooseRepairVehicle(car) {
+  if (selectedCreationType.value === 'INSURANCE') await loadInsurers()
   insuranceVehiclePickerVisible.value = false
   repairCaseCar.value = car
   newInsuranceCaseForm.value = { caseNumber: '', insurerId: '' }
@@ -501,6 +526,7 @@ async function saveNewInsuranceCase() {
 }
 
 function startRepairCase(caseItem = null) {
+  loadInsurers(); loadContractors(); loadShifts()
   editingRepairCase.value = caseItem
   repairCasePhotos.value = []
   repairCaseForm.value = caseItem ? { caseNumber: caseItem.caseNumber, status: caseItem.status, insuredPerson: caseItem.insuredPerson || '', claimNumber: caseItem.claimNumber || '', insurerId: caseItem.insurerId ? String(caseItem.insurerId) : '', contractorId: '', shiftId: '', acceptedAt: caseItem.acceptedAt || '' } : { caseNumber: '', status: 'CREATED', insuredPerson: '', claimNumber: '', insurerId: '', contractorId: '', shiftId: '', acceptedAt: '' }
@@ -717,6 +743,7 @@ async function openCarEdit(car) {
 }
 
 function openPartForm(car, caseItem = caseDetailVisible.value ? selectedRegistryCase.value : null) {
+  loadSuppliers()
   if (caseItem) caseDetailVisible.value = false
   modal.value = null
   selectedCar.value = car
