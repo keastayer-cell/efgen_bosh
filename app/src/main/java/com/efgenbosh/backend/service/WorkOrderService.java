@@ -12,6 +12,8 @@ import com.efgenbosh.backend.dto.workorder.WorkOrderResponse;
 import com.efgenbosh.backend.repository.CarRepository;
 import com.efgenbosh.backend.repository.WorkOrderRepository;
 import com.efgenbosh.backend.repository.RepairCaseRepository;
+import com.efgenbosh.backend.repository.RepairCaseHistoryRepository;
+import com.efgenbosh.backend.domain.RepairCaseHistory;
 import jakarta.transaction.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,9 +27,10 @@ public class WorkOrderService {
     private final WorkOrderRepository orders;
     private final CarRepository cars;
     private final RepairCaseRepository repairCases;
+    private final RepairCaseHistoryRepository history;
 
-    public WorkOrderService(WorkOrderRepository orders, CarRepository cars, RepairCaseRepository repairCases) {
-        this.orders = orders; this.cars = cars; this.repairCases = repairCases;
+    public WorkOrderService(WorkOrderRepository orders, CarRepository cars, RepairCaseRepository repairCases, RepairCaseHistoryRepository history) {
+        this.orders = orders; this.cars = cars; this.repairCases = repairCases; this.history = history;
     }
 
     @Transactional
@@ -68,7 +71,9 @@ public class WorkOrderService {
         if ("CLOSED".equals(repairCase.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Закрытый страховой случай доступен только для просмотра.");
         WorkOrder order = orders.findByRepairCaseId(caseId).orElseGet(() -> createCaseDraft(repairCase, userId));
         applyRequest(order, request); order.touch();
-        return WorkOrderResponse.from(orders.save(order));
+        WorkOrder saved = orders.save(order);
+        recordWorkOrderChange(repairCase, saved, userId);
+        return WorkOrderResponse.from(saved);
     }
 
     @Transactional
@@ -116,6 +121,16 @@ public class WorkOrderService {
         order.setClaimNumber(value(repairCase.getClaimNumber())); order.setVehicleName(value(repairCase.getCar().getVehicleName()));
         order.setRegistrationNumber(value(repairCase.getCar().getRegistrationNumber())); order.setVin(value(repairCase.getCar().getVin()));
         return orders.save(order);
+    }
+
+    private void recordWorkOrderChange(RepairCase repairCase, WorkOrder order, Long userId) {
+        var event = new RepairCaseHistory();
+        event.setRepairCase(repairCase);
+        event.setPreviousStatus(repairCase.getStatus());
+        event.setNewStatus(repairCase.getStatus());
+        event.setComment("Работы сохранены: " + order.getLines().size() + ", материалов в заказ-наряде: " + order.getPartLines().size());
+        event.setCreatedBy(userId);
+        history.save(event);
     }
 
     private RepairCase ensureCase(Long carId, Long caseId) {
