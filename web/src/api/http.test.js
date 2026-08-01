@@ -27,4 +27,36 @@ describe('requestJson', () => {
       status: 401,
     })
   })
+
+  it('shows the backend business error instead of a generic status message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        timestamp: '2026-08-01T11:21:10.861833+03:00',
+        status: 409,
+        error: 'Данные конфликтуют с уже существующей записью.',
+        path: '/api/v1/contractors',
+        fieldErrors: {},
+      }),
+    }))
+
+    await expect(requestJson('/api/v1/contractors', { method: 'POST' })).rejects.toMatchObject({
+      message: 'Данные конфликтуют с уже существующей записью.',
+      status: 409,
+    })
+  })
+
+  it('formats validation field errors for the user', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ fieldErrors: { code: 'Код уже занят', shortName: ['Укажите имя'] } }),
+    }))
+
+    await expect(requestJson('/api/v1/contractors')).rejects.toMatchObject({
+      message: 'code: Код уже занят; shortName: Укажите имя',
+      status: 400,
+    })
+  })
 })

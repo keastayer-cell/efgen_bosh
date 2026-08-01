@@ -12,6 +12,7 @@ import java.util.List;
 public class WorkOrder {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @OneToOne(fetch = FetchType.LAZY, optional = true) @JoinColumn(name = "car_id", nullable = true, unique = true) private Car car;
+    @OneToOne(fetch = FetchType.LAZY, optional = true) @JoinColumn(name = "repair_case_id", nullable = true, unique = true) private RepairCase repairCase;
     @Column(nullable = false, length = 32) private String status = "DRAFT";
     @Column(name = "document_date", nullable = false) private LocalDate documentDate = LocalDate.now();
     @Column(nullable = false, length = 500) private String customer = "";
@@ -34,6 +35,8 @@ public class WorkOrder {
     public Long getId() { return id; }
     public Car getCar() { return car; }
     public void setCar(Car value) { car = value; }
+    public RepairCase getRepairCase() { return repairCase; }
+    public void setRepairCase(RepairCase value) { repairCase = value; }
     public String getStatus() { return status; }
     public void setStatus(String value) { status = value; }
     public LocalDate getDocumentDate() { return documentDate; }

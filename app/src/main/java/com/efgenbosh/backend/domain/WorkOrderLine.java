@@ -14,6 +14,8 @@ public class WorkOrderLine {
     @Column(nullable = false, precision = 12, scale = 3) private BigDecimal quantity = BigDecimal.ONE;
     @Column(nullable = false, precision = 14, scale = 2) private BigDecimal price = BigDecimal.ZERO;
     @Column(name = "sort_order", nullable = false) private Integer sortOrder = 0;
+    @Column(name = "contractor_id") private Long contractorId;
+    @Column(nullable = false, length = 1000) private String comment = "";
     public Long getId() { return id; }
     public WorkOrder getWorkOrder() { return workOrder; }
     public void setWorkOrder(WorkOrder value) { workOrder = value; }
@@ -29,5 +31,7 @@ public class WorkOrderLine {
     public void setPrice(BigDecimal value) { price = value; }
     public Integer getSortOrder() { return sortOrder; }
     public void setSortOrder(Integer value) { sortOrder = value; }
+    public Long getContractorId() { return contractorId; } public void setContractorId(Long value) { contractorId = value; }
+    public String getComment() { return comment; } public void setComment(String value) { comment = value; }
     public BigDecimal total() { return quantity.multiply(price); }
 }

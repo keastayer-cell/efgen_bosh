@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface PartRepository extends JpaRepository<Part, Long> {
     List<Part> findAllByCarIdOrderBySortOrderAscIdAsc(Long carId);
+    List<Part> findAllByRepairCase_IdOrderBySortOrderAscIdAsc(Long caseId);
 }

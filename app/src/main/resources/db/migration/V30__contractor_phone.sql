@@ -1,0 +1,2 @@
+ALTER TABLE work.w_contractor
+  ADD COLUMN phone VARCHAR(40) NOT NULL DEFAULT '';

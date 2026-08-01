@@ -1,4 +1,4 @@
 package com.efgenbosh.backend.domain;
 import jakarta.persistence.*;
 @Entity @Table(name="w_vehicle_make", schema="work")
-public class VehicleMake { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id; @Column(nullable=false, unique=true) private String name; @Column(nullable=false) private boolean active=true; public Long getId(){return id;} public String getName(){return name;} public boolean isActive(){return active;} }
+public class VehicleMake { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id; @Column(nullable=false, unique=true) private String name; @Column(nullable=false) private boolean active=true; public Long getId(){return id;} public String getName(){return name;} public void setName(String value){name=value;} public boolean isActive(){return active;} public void setActive(boolean value){active=value;} }

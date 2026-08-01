@@ -10,6 +10,7 @@ public class Contractor {
     @Column(nullable = false, length = 80) private String code;
     @Column(name = "short_name", nullable = false) private String shortName;
     @Column(name = "full_name", nullable = false, columnDefinition = "text") private String fullName;
+    @Column(nullable = false, length = 40) private String phone = "";
     @Column(name = "signer_name", nullable = false) private String signerName = "";
     @Column(nullable = false, length = 20) private String inn = "";
     @Column(nullable = false, length = 20) private String ogrnip = "";
@@ -28,6 +29,7 @@ public class Contractor {
     public Long getId() { return id; } public String getCode() { return code; } public void setCode(String v) { code = v; }
     public String getShortName() { return shortName; } public void setShortName(String v) { shortName = v; }
     public String getFullName() { return fullName; } public void setFullName(String v) { fullName = v; }
+    public String getPhone() { return phone; } public void setPhone(String v) { phone = v; }
     public String getSignerName() { return signerName; } public void setSignerName(String v) { signerName = v; }
     public String getInn() { return inn; } public void setInn(String v) { inn = v; } public String getOgrnip() { return ogrnip; } public void setOgrnip(String v) { ogrnip = v; }
     public String getAddress() { return address; } public void setAddress(String v) { address = v; } public String getBankName() { return bankName; } public void setBankName(String v) { bankName = v; }

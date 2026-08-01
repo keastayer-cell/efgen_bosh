@@ -4,12 +4,14 @@ import com.efgenbosh.backend.domain.Car;
 import com.efgenbosh.backend.domain.WorkOrder;
 import com.efgenbosh.backend.domain.WorkOrderLine;
 import com.efgenbosh.backend.domain.WorkOrderPartLine;
+import com.efgenbosh.backend.domain.RepairCase;
 import com.efgenbosh.backend.dto.workorder.WorkOrderLineRequest;
 import com.efgenbosh.backend.dto.workorder.WorkOrderPartLineRequest;
 import com.efgenbosh.backend.dto.workorder.WorkOrderRequest;
 import com.efgenbosh.backend.dto.workorder.WorkOrderResponse;
 import com.efgenbosh.backend.repository.CarRepository;
 import com.efgenbosh.backend.repository.WorkOrderRepository;
+import com.efgenbosh.backend.repository.RepairCaseRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -22,10 +24,10 @@ import java.util.List;
 public class WorkOrderService {
     private final WorkOrderRepository orders;
     private final CarRepository cars;
+    private final RepairCaseRepository repairCases;
 
-    public WorkOrderService(WorkOrderRepository orders, CarRepository cars) {
-        this.orders = orders;
-        this.cars = cars;
+    public WorkOrderService(WorkOrderRepository orders, CarRepository cars, RepairCaseRepository repairCases) {
+        this.orders = orders; this.cars = cars; this.repairCases = repairCases;
     }
 
     @Transactional
@@ -51,6 +53,21 @@ public class WorkOrderService {
         order.replacePartLines((request.partLines() == null ? List.<WorkOrderPartLineRequest>of() : request.partLines())
             .stream().map(this::partLine).toList());
         order.touch();
+        return WorkOrderResponse.from(orders.save(order));
+    }
+
+    @Transactional
+    public WorkOrderResponse findByCaseId(Long carId, Long caseId) {
+        RepairCase repairCase = ensureCase(carId, caseId);
+        return WorkOrderResponse.from(orders.findByRepairCaseId(caseId).orElseGet(() -> createCaseDraft(repairCase, null)));
+    }
+
+    @Transactional
+    public WorkOrderResponse saveCase(Long carId, Long caseId, WorkOrderRequest request, Long userId) {
+        RepairCase repairCase = ensureCase(carId, caseId);
+        if ("CLOSED".equals(repairCase.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Закрытый страховой случай доступен только для просмотра.");
+        WorkOrder order = orders.findByRepairCaseId(caseId).orElseGet(() -> createCaseDraft(repairCase, userId));
+        applyRequest(order, request); order.touch();
         return WorkOrderResponse.from(orders.save(order));
     }
 
@@ -92,6 +109,20 @@ public class WorkOrderService {
         return orders.save(order);
     }
 
+    private WorkOrder createCaseDraft(RepairCase repairCase, Long userId) {
+        // У автомобиля может уже быть legacy-заказ-наряд с уникальным car_id.
+        // Заказ-наряд обращения идентифицируется repair_case_id и не должен конфликтовать с ним.
+        WorkOrder order = new WorkOrder(); order.setRepairCase(repairCase); order.setCreatedBy(userId);
+        order.setClaimNumber(value(repairCase.getClaimNumber())); order.setVehicleName(value(repairCase.getCar().getVehicleName()));
+        order.setRegistrationNumber(value(repairCase.getCar().getRegistrationNumber())); order.setVin(value(repairCase.getCar().getVin()));
+        return orders.save(order);
+    }
+
+    private RepairCase ensureCase(Long carId, Long caseId) {
+        return repairCases.findById(caseId).filter(item -> item.getCar().getId().equals(carId)).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "Обращение не найдено."));
+    }
+
     private WorkOrderLine line(WorkOrderLineRequest request) {
         WorkOrderLine line = new WorkOrderLine();
         line.setCategoryNameSnapshot(value(request.categoryName()));
@@ -99,6 +130,8 @@ public class WorkOrderService {
         line.setUnit(request.unit().trim());
         line.setQuantity(request.quantity());
         line.setPrice(request.price().setScale(2));
+        line.setContractorId(request.contractorId());
+        line.setComment(value(request.comment()));
         line.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         return line;
     }

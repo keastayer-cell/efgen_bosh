@@ -11,5 +11,5 @@ public record WorkOrderLineRequest(
     @NotBlank String unit,
     @NotNull @DecimalMin("0.001") BigDecimal quantity,
     @NotNull @DecimalMin("0.00") BigDecimal price,
-    Integer sortOrder
+    Long contractorId, String comment, Integer sortOrder
 ) { }
