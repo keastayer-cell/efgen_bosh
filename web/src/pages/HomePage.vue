@@ -212,7 +212,7 @@ async function loadCars() {
 }
 
 async function loadRepairRegistry() {
-  try { repairRegistry.value = await requestJson('/api/v1/repair-cases') } catch (error) { showToast(`Страховые случаи не загружены: ${error.message}`) }
+  try { repairRegistry.value = await requestJson('/api/v1/repair-cases'); syncCaseRowMeta() } catch (error) { showToast(`Страховые случаи не загружены: ${error.message}`) }
 }
 
 async function openCaseDetail(item) {
