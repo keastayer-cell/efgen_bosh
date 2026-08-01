@@ -149,7 +149,8 @@ npm run build
 
 - secret: `VPS_SSH_KEY`.
 
-Хост, пользователь, fingerprint и публичный URL зафиксированы в workflow.
+Хост, пользователь, RSA fingerprint `SHA256:tqqTbbNwEfojvPTx7DYNSp6A12Z8We3FPAXSLNLfxEo`
+и публичный URL зафиксированы в workflow.
 
 Пароли БД и JWT-секреты остаются только в `/etc/efgen-bosh/test` на сервере.
 
