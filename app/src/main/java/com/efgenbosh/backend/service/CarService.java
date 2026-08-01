@@ -71,7 +71,7 @@ public class CarService {
     public CarPageResponse searchPage(String query, int page, int size, String status, Long insurerId, Long shiftId, Long contractorId, boolean overdue) {
         int safeSize = Math.max(1, Math.min(size, 100)); int safePage = Math.max(0, page);
         List<CarResponse> allCars = search(null).stream()
-            .sorted(java.util.Comparator.comparing(CarResponse::id, java.util.Comparator.reverseOrder()))
+            .sorted(java.util.Comparator.comparing(this::latestRepairCaseId, java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())).thenComparing(CarResponse::id, java.util.Comparator.reverseOrder()))
             .toList();
         var summary = new CarSearchSummary(
             allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.CREATED, RepairCaseStatus.WAITING_PARTS, RepairCaseStatus.PARTS_RECEIVED, RepairCaseStatus.SCHEDULED, RepairCaseStatus.IN_REPAIR, RepairCaseStatus.READY)).count(),
@@ -116,7 +116,11 @@ public class CarService {
             case "ready" -> RepairCaseStatus.PARTS_RECEIVED.code().equals(item.status());
             case "delivered" -> RepairCaseStatus.DELIVERED.code().equals(item.status());
             default -> requested.equalsIgnoreCase(item.status()) || ("waiting_parts".equalsIgnoreCase(requested) && RepairCaseStatus.WAITING_PARTS.code().equals(item.status())) || ("parts_received".equalsIgnoreCase(requested) && RepairCaseStatus.PARTS_RECEIVED.code().equals(item.status()));
-        })).toList();
+        })).sorted(java.util.Comparator.comparing(RepairCaseRegistryResponse::id, java.util.Comparator.reverseOrder())).toList();
+    }
+
+    private Long latestRepairCaseId(CarResponse car) {
+        return car.repairCases().stream().map(RepairCaseRegistryResponse::id).filter(java.util.Objects::nonNull).max(Long::compareTo).orElse(null);
     }
 
     private boolean matchesQuery(CarResponse car, String query) {
@@ -241,7 +245,7 @@ public class CarService {
         var registryCases = repairCases.findAllByCar_IdOrderByCreatedAtDesc(car.getId()).stream().map(item -> {
             var caseParts = parts.findAllByRepairCase_IdOrderBySortOrderAscIdAsc(item.getId());
             return RepairCaseRegistryResponse.from(item, caseParts.size(), (int) caseParts.stream().filter(Part::isReceived).count());
-        }).toList();
+        }).sorted(java.util.Comparator.comparing(RepairCaseRegistryResponse::id, java.util.Comparator.reverseOrder())).toList();
         return CarResponse.from(car, LocalDate.now(), registryCases);
     }
 
