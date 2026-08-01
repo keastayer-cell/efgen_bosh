@@ -190,7 +190,6 @@ async function loadCars() {
     carTotalPages.value = result.totalPages
     carTotalItems.value = result.totalItems
     stats.value = result.summary || stats.value
-    caseStatusOptions.value = [{ code: 'ALL', label: 'Все' }, ...(result.statuses || [])]
   } catch (error) {
     carsError.value = error.message
   } finally {
@@ -207,12 +206,20 @@ async function loadRepairRegistry() {
     carTotalPages.value = result.totalPages
     carTotalItems.value = result.totalItems
     stats.value = result.summary || stats.value
-    caseStatusOptions.value = [{ code: 'ALL', label: 'Все' }, ...(result.statuses || [])]
     repairRegistry.value = result.items.flatMap((car) => (car.repairCases || []).map((item) => ({ ...item, carId: car.id })))
     caseTotalItems.value = result.totalItems
     caseTotalPagesFromApi.value = result.totalPages
     syncCaseRowMeta()
   } catch (error) { showToast(`Страховые случаи не загружены: ${error.message}`) }
+}
+
+async function loadRepairCaseStatuses() {
+  try {
+    const result = await requestJson('/api/v1/repair-case-statuses')
+    caseStatusOptions.value = [{ code: 'ALL', label: 'Все' }, ...result]
+  } catch (error) {
+    showToast(`Статусы страховых случаев не загружены: ${error.message}`)
+  }
 }
 
 async function openCaseDetail(item) {
@@ -258,7 +265,7 @@ async function saveCaseContractor() {
     })
     caseDetailRecord.value = saved
     selectedRegistryCase.value = { ...selectedRegistryCase.value, contractorId: saved.contractorId }
-    await loadRepairRegistry()
+    await Promise.all([loadRepairRegistry(), loadRepairCaseStatuses()])
     showToast('Исполнитель заменён')
   } catch (error) { showToast(error.message) }
 }
@@ -1109,6 +1116,7 @@ onMounted(() => {
   document.addEventListener('click', (event) => { const row = event.target.closest('.case-row'); if (!row) return; const index = Array.from(document.querySelectorAll('.case-row')).indexOf(row); const item = paginatedRepairCases.value[index]; if (!item) return; if (event.target.closest('.case-row-details-button')) { event.stopPropagation(); toggleCaseRow(item) } else openCaseDetail(item) })
   if (token.value) {
     loadRepairRegistry()
+    loadRepairCaseStatuses()
   }
   syncCaseRowMeta()
 })
