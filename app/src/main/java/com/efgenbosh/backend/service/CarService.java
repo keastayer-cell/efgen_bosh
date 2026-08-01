@@ -25,6 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 import com.efgenbosh.backend.dto.car.CarPageResponse;
 
 @Service
@@ -78,12 +79,13 @@ public class CarService {
             allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.WAITING_PARTS)).count(),
             allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.PARTS_RECEIVED)).count(),
             allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.DELIVERED)).count());
+        Set<Long> contractorCarIds = contractorId == null ? Set.of() : Set.copyOf(repairCases.findCarIdsByContractorId(contractorId));
         List<CarResponse> all = allCars.stream()
             .filter(car -> matchesQuery(car, query))
             .filter(car -> matchesStatus(car, status))
             .filter(car -> insurerId == null || insurerId.equals(car.insurerId()))
             .filter(car -> shiftId == null || shiftId.equals(car.shiftId()))
-            .filter(car -> contractorId == null || contractorId.equals(car.contractorId()) || car.repairCases().stream().anyMatch(item -> contractorId.equals(item.contractorId())))
+            .filter(car -> contractorId == null || contractorCarIds.contains(car.id()))
             .filter(car -> !overdue || car.parts().stream().anyMatch(PartResponse::overdue))
             .toList();
         int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
