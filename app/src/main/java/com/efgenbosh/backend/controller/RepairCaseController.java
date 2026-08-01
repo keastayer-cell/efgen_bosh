@@ -12,6 +12,7 @@ import com.efgenbosh.backend.repository.PartRepository;
 import com.efgenbosh.backend.repository.WorkOrderRepository;
 import com.efgenbosh.backend.repository.ContractorRepository;
 import com.efgenbosh.backend.repository.AppUserRepository;
+import com.efgenbosh.backend.repository.RepairCaseStatusRepository;
 import com.efgenbosh.backend.domain.RepairCaseHistory;
 import com.efgenbosh.backend.domain.RepairCaseStatus;
 import jakarta.validation.Valid;
@@ -25,8 +26,8 @@ import com.efgenbosh.backend.security.AppUserPrincipal;
 @RestController
 @RequestMapping("/api/v1/cars/{carId}/repair-cases")
 public class RepairCaseController {
-    private final RepairCaseRepository cases; private final CarRepository cars; private final RepairCaseHistoryRepository history; private final PartRepository parts; private final WorkOrderRepository workOrders; private final ContractorRepository contractors; private final AppUserRepository users;
-    public RepairCaseController(RepairCaseRepository cases, CarRepository cars, RepairCaseHistoryRepository history, PartRepository parts, WorkOrderRepository workOrders, ContractorRepository contractors, AppUserRepository users) { this.cases = cases; this.cars = cars; this.history = history; this.parts = parts; this.workOrders = workOrders; this.contractors = contractors; this.users = users; }
+    private final RepairCaseRepository cases; private final CarRepository cars; private final RepairCaseHistoryRepository history; private final PartRepository parts; private final WorkOrderRepository workOrders; private final ContractorRepository contractors; private final AppUserRepository users; private final RepairCaseStatusRepository statusDictionary;
+    public RepairCaseController(RepairCaseRepository cases, CarRepository cars, RepairCaseHistoryRepository history, PartRepository parts, WorkOrderRepository workOrders, ContractorRepository contractors, AppUserRepository users, RepairCaseStatusRepository statusDictionary) { this.cases = cases; this.cars = cars; this.history = history; this.parts = parts; this.workOrders = workOrders; this.contractors = contractors; this.users = users; this.statusDictionary = statusDictionary; }
     @GetMapping public List<RepairCaseResponse> list(@PathVariable Long carId) { ensureCar(carId); return cases.findAllByCar_IdOrderByCreatedAtDesc(carId).stream().map(this::response).toList(); }
     @GetMapping("/{caseId}")
     public RepairCaseResponse get(@PathVariable Long carId, @PathVariable Long caseId) {
@@ -42,7 +43,8 @@ public class RepairCaseController {
     }
     @DeleteMapping("/{caseId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long carId, @PathVariable Long caseId) { RepairCase item = cases.findById(caseId).filter(value -> value.getCar().getId().equals(carId)).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Страховой случай не найден.")); ensureEditable(item); cases.delete(item); }
-    private void apply(RepairCase item, RepairCaseRequest request) { item.setCaseNumber(request.caseNumber().trim()); if (request.repairType() != null) item.setRepairType(validType(request.repairType())); if (request.status() != null) { var status = RepairCaseStatus.parse(request.status()); if (status == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный статус страхового случая."); item.setStatus(status.code()); } item.setInsuredPerson(value(request.insuredPerson())); item.setClaimNumber(value(request.claimNumber())); item.setInsurerId(request.insurerId()); item.setContractorId(request.contractorId()); item.setShiftId(request.shiftId()); item.setAcceptedAt(request.acceptedAt()); item.setComment(value(request.comment())); item.setAppointmentDate(request.appointmentDate()); item.setAppointmentTime(request.appointmentTime()); item.setReceivedBy(value(request.receivedBy())); item.touch(); }
+    private void apply(RepairCase item, RepairCaseRequest request) { item.setCaseNumber(request.caseNumber().trim()); if (request.repairType() != null) item.setRepairType(validType(request.repairType())); if (request.status() != null) item.setStatus(statusCode(request.status())); item.setInsuredPerson(value(request.insuredPerson())); item.setClaimNumber(value(request.claimNumber())); item.setInsurerId(request.insurerId()); item.setContractorId(request.contractorId()); item.setShiftId(request.shiftId()); item.setAcceptedAt(request.acceptedAt()); item.setComment(value(request.comment())); item.setAppointmentDate(request.appointmentDate()); item.setAppointmentTime(request.appointmentTime()); item.setReceivedBy(value(request.receivedBy())); item.touch(); }
+    private String statusCode(String value) { var status = RepairCaseStatus.parse(value); if (status == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестный статус страхового случая."); return statusDictionary.findByCodeAndActiveTrue(status.code()).map(item -> item.getCode()).orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неактивный статус страхового случая.")); }
     private String validType(String value){ return "REPAIR".equalsIgnoreCase(value) ? "REPAIR" : "INSURANCE"; }
     @PostMapping("/{caseId}/actions/{action}")
     public RepairCaseResponse action(@PathVariable Long carId, @PathVariable Long caseId, @PathVariable String action, @RequestBody(required = false) RepairCaseActionRequest request, Authentication authentication) {

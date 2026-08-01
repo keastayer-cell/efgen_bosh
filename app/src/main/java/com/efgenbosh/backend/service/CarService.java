@@ -12,6 +12,7 @@ import com.efgenbosh.backend.repository.WorkOrderRepository;
 import com.efgenbosh.backend.repository.DefectAnalysisRepository;
 import com.efgenbosh.backend.repository.CarHistoryRepository;
 import com.efgenbosh.backend.repository.RepairCaseRepository;
+import com.efgenbosh.backend.repository.RepairCaseStatusRepository;
 import com.efgenbosh.backend.dto.car.RepairCaseRegistryResponse;
 import com.efgenbosh.backend.dto.car.CarSearchSummary;
 import com.efgenbosh.backend.domain.RepairCaseStatus;
@@ -34,14 +35,16 @@ public class CarService {
     private final DefectAnalysisRepository defectAnalyses;
     private final CarHistoryRepository history;
     private final RepairCaseRepository repairCases;
+    private final RepairCaseStatusRepository statusDictionary;
 
-    public CarService(CarRepository cars, PartRepository parts, WorkOrderRepository workOrders, DefectAnalysisRepository defectAnalyses, CarHistoryRepository history, RepairCaseRepository repairCases) {
+    public CarService(CarRepository cars, PartRepository parts, WorkOrderRepository workOrders, DefectAnalysisRepository defectAnalyses, CarHistoryRepository history, RepairCaseRepository repairCases, RepairCaseStatusRepository statusDictionary) {
         this.cars = cars;
         this.parts = parts;
         this.workOrders = workOrders;
         this.defectAnalyses = defectAnalyses;
         this.history = history;
         this.repairCases = repairCases;
+        this.statusDictionary = statusDictionary;
     }
 
     @Transactional
@@ -83,7 +86,7 @@ public class CarService {
             .toList();
         int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
         long pages = all.isEmpty() ? 0 : (all.size() + safeSize - 1L) / safeSize;
-        var statuses = java.util.Arrays.stream(RepairCaseStatus.values()).map(com.efgenbosh.backend.dto.car.RepairCaseStatusResponse::from).toList();
+        var statuses = statusDictionary.findAllByActiveTrueOrderBySortOrderAsc().stream().map(item -> new com.efgenbosh.backend.dto.car.RepairCaseStatusResponse(item.getId(), item.getCode(), item.getLabel())).toList();
         return new CarPageResponse(all.subList(from, to), safePage, safeSize, pages, all.size(), summary, statuses);
     }
 
