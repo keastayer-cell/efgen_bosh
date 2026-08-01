@@ -49,7 +49,7 @@ public class RepairCaseController {
     @PostMapping("/{caseId}/actions/{action}")
     public RepairCaseResponse action(@PathVariable Long carId, @PathVariable Long caseId, @PathVariable String action, @RequestBody(required = false) RepairCaseActionRequest request, Authentication authentication) {
         RepairCase item = cases.findById(caseId).filter(value -> value.getCar().getId().equals(carId)).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Страховой случай не найден."));
-        String required = switch (action.toUpperCase()) { case "ORDER_PARTS" -> RepairCaseStatus.CREATED.code(); case "SCHEDULE_REPAIR" -> RepairCaseStatus.PARTS_RECEIVED.code(); case "START_REPAIR" -> RepairCaseStatus.SCHEDULED.code(); case "FINISH_REPAIR" -> RepairCaseStatus.IN_REPAIR.code(); case "DELIVER" -> RepairCaseStatus.READY.code(); case "CLOSE" -> RepairCaseStatus.DELIVERED.code(); default -> null; };
+        String required = switch (action.toUpperCase()) { case "ORDER_PARTS" -> RepairCaseStatus.CREATED.code(); case "SCHEDULE_REPAIR" -> RepairCaseStatus.PARTS_RECEIVED.code(); case "START_REPAIR" -> RepairCaseStatus.SCHEDULED.code(); case "FINISH_REPAIR" -> RepairCaseStatus.IN_REPAIR.code(); case "DELIVER" -> RepairCaseStatus.READY.code(); default -> null; };
         if (required == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестное действие.");
         if (!required.equals(item.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Действие недоступно для статуса «" + item.getStatus() + "».");
         String next = switch (action.toUpperCase()) {
@@ -58,7 +58,6 @@ public class RepairCaseController {
             case "START_REPAIR" -> RepairCaseStatus.IN_REPAIR.code();
             case "FINISH_REPAIR" -> { var order = workOrders.findByRepairCaseId(caseId).orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нельзя завершить ремонт без выполненных работ.")); if (order.getLines() == null || order.getLines().isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нельзя завершить ремонт без выполненных работ."); yield RepairCaseStatus.READY.code(); }
             case "DELIVER" -> RepairCaseStatus.DELIVERED.code();
-            case "CLOSE" -> RepairCaseStatus.CLOSED.code();
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестное действие.");
         };
         String previous = item.getStatus(); if (request != null) { if (request.contractorId() != null) item.setContractorId(request.contractorId()); if (request.appointmentDate() != null) item.setAppointmentDate(request.appointmentDate()); if (request.appointmentTime() != null) item.setAppointmentTime(request.appointmentTime()); if (request.receivedBy() != null) item.setReceivedBy(request.receivedBy().trim()); if (request.comment() != null) item.setComment(request.comment().trim()); } if ("START_REPAIR".equalsIgnoreCase(action)) item.setStartedAt(java.time.OffsetDateTime.now()); if ("DELIVER".equalsIgnoreCase(action)) item.setDeliveredAt(java.time.OffsetDateTime.now()); item.setStatus(next); item.setUpdatedBy(userId(authentication)); item.touch(); RepairCase saved = cases.save(item); record(saved, previous, next, historyAction(action, saved), userId(authentication)); return response(saved);

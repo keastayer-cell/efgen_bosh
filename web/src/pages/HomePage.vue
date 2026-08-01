@@ -78,7 +78,7 @@ const expandedCaseParts = ref([])
 const caseActionModal = ref(null)
 const caseActionForm = ref({ contractorId: '', appointmentDate: '', appointmentTime: '', receivedBy: '', comment: '' })
 const caseDocumentsVisible = ref(false)
-const statusLabels = { CREATED: 'Создан', WAITING_PARTS: 'Ожидание деталей', PARTS_RECEIVED: 'Детали поступили', SCHEDULED: 'Запись на ремонт', IN_REPAIR: 'Ремонт', READY: 'Готов к выдаче', DELIVERED: 'Автомобиль выдан', CLOSED: 'Закрыт' }
+const statusLabels = { CREATED: 'Создан', WAITING_PARTS: 'Ожидание деталей', PARTS_RECEIVED: 'Детали поступили', SCHEDULED: 'Запись на ремонт', IN_REPAIR: 'Ремонт', READY: 'Готов к выдаче', DELIVERED: 'Автомобиль выдан' }
 const statusLabel = (status) => statusLabels[status] || status
 const modal = ref(null)
 const toast = ref('')
@@ -296,6 +296,7 @@ async function toggleCasePartReceived(item, part) {
 
 async function runCaseAction(action) {
   const item = selectedRegistryCase.value; if (!item) return
+  if (action === 'CLOSE') return
   if (action === 'SCHEDULE_REPAIR' || action === 'DELIVER') { if (action === 'SCHEDULE_REPAIR') await loadContractors(); caseActionModal.value = action; caseActionForm.value = { contractorId: item.contractorId ? String(item.contractorId) : '', appointmentDate: '', appointmentTime: '', receivedBy: '', comment: '' }; return }
   try { const updated = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/actions/${action}`, { method: 'POST' }); selectedRegistryCase.value = updated; await loadRepairRegistry(); showToast('Действие выполнено') } catch (error) { showToast(error.message) }
 }
