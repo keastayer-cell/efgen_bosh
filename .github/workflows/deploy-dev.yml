@@ -59,7 +59,6 @@ jobs:
           host: 139.100.237.243
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
-          fingerprint: SHA256:fXqRrJkUlp6RwAZ4EG7H26nakCGnn/qUpsTIcml96+w
           source: release
           target: /tmp/efgen-bosh-${{ github.sha }}
       - name: Deploy release on test server
@@ -68,7 +67,6 @@ jobs:
           host: 139.100.237.243
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
-          fingerprint: SHA256:fXqRrJkUlp6RwAZ4EG7H26nakCGnn/qUpsTIcml96+w
           script: |
             set -euo pipefail
             release_root=/tmp/efgen-bosh-${{ github.sha }}/release
