@@ -83,7 +83,7 @@ public class CarService {
             .filter(car -> matchesStatus(car, status))
             .filter(car -> insurerId == null || insurerId.equals(car.insurerId()))
             .filter(car -> shiftId == null || shiftId.equals(car.shiftId()))
-            .filter(car -> contractorId == null || car.repairCases().stream().anyMatch(item -> contractorId.equals(item.contractorId())))
+            .filter(car -> contractorId == null || contractorId.equals(car.contractorId()) || car.repairCases().stream().anyMatch(item -> contractorId.equals(item.contractorId())))
             .filter(car -> !overdue || car.parts().stream().anyMatch(PartResponse::overdue))
             .toList();
         int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
