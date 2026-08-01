@@ -14,6 +14,7 @@ import com.efgenbosh.backend.repository.CarHistoryRepository;
 import com.efgenbosh.backend.repository.RepairCaseRepository;
 import com.efgenbosh.backend.dto.car.RepairCaseRegistryResponse;
 import com.efgenbosh.backend.dto.car.CarSearchSummary;
+import com.efgenbosh.backend.domain.RepairCaseStatus;
 import com.efgenbosh.backend.domain.CarHistory;
 import jakarta.transaction.Transactional;
 import org.springframework.http.HttpStatus;
@@ -68,10 +69,10 @@ public class CarService {
         int safeSize = Math.max(1, Math.min(size, 100)); int safePage = Math.max(0, page);
         List<CarResponse> allCars = search(null);
         var summary = new CarSearchSummary(
-            allCars.stream().filter(car -> car.status() != LegacyBusinessRules.CarStatus.DELIVERED).count(),
-            allCars.stream().filter(car -> car.status() == LegacyBusinessRules.CarStatus.WAITING).count(),
-            allCars.stream().filter(car -> car.status() == LegacyBusinessRules.CarStatus.READY).count(),
-            allCars.stream().filter(car -> car.status() == LegacyBusinessRules.CarStatus.DELIVERED).count());
+            allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.CREATED, RepairCaseStatus.WAITING_PARTS, RepairCaseStatus.PARTS_RECEIVED, RepairCaseStatus.SCHEDULED, RepairCaseStatus.IN_REPAIR, RepairCaseStatus.READY)).count(),
+            allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.WAITING_PARTS)).count(),
+            allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.PARTS_RECEIVED)).count(),
+            allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.DELIVERED)).count());
         List<CarResponse> all = allCars.stream()
             .filter(car -> matchesQuery(car, query))
             .filter(car -> matchesStatus(car, status))
@@ -82,22 +83,24 @@ public class CarService {
             .toList();
         int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
         long pages = all.isEmpty() ? 0 : (all.size() + safeSize - 1L) / safeSize;
-        return new CarPageResponse(all.subList(from, to), safePage, safeSize, pages, all.size(), summary);
+        var statuses = java.util.Arrays.stream(RepairCaseStatus.values()).map(com.efgenbosh.backend.dto.car.RepairCaseStatusResponse::from).toList();
+        return new CarPageResponse(all.subList(from, to), safePage, safeSize, pages, all.size(), summary, statuses);
     }
 
     private boolean matchesStatus(CarResponse car, String requested) {
         if (requested == null || requested.isBlank() || "all".equalsIgnoreCase(requested)) return true;
         return switch (requested.toLowerCase()) {
-            case "active" -> car.status() != LegacyBusinessRules.CarStatus.DELIVERED;
-            case "waiting" -> car.status() == LegacyBusinessRules.CarStatus.WAITING;
-            case "ready" -> car.status() == LegacyBusinessRules.CarStatus.READY;
-            case "delivered" -> car.status() == LegacyBusinessRules.CarStatus.DELIVERED;
-            case "waiting_parts" -> car.status() == LegacyBusinessRules.CarStatus.WAITING
-                || car.repairCases().stream().anyMatch(item -> requested.equalsIgnoreCase(item.status()));
-            case "parts_received" -> car.status() == LegacyBusinessRules.CarStatus.READY
-                || car.repairCases().stream().anyMatch(item -> requested.equalsIgnoreCase(item.status()));
+            case "active" -> currentCaseHas(car, RepairCaseStatus.CREATED, RepairCaseStatus.WAITING_PARTS, RepairCaseStatus.PARTS_RECEIVED, RepairCaseStatus.SCHEDULED, RepairCaseStatus.IN_REPAIR, RepairCaseStatus.READY);
+            case "waiting" -> currentCaseHas(car, RepairCaseStatus.WAITING_PARTS);
+            case "ready" -> currentCaseHas(car, RepairCaseStatus.PARTS_RECEIVED);
+            case "delivered" -> currentCaseHas(car, RepairCaseStatus.DELIVERED);
+            case "waiting_parts", "parts_received" -> car.repairCases().stream().anyMatch(item -> requested.equalsIgnoreCase(item.status()));
             default -> car.repairCases().stream().anyMatch(item -> requested.equalsIgnoreCase(item.status()));
         };
+    }
+
+    private boolean currentCaseHas(CarResponse car, RepairCaseStatus... statuses) {
+        return car.repairCases().stream().findFirst().map(item -> java.util.Arrays.stream(statuses).anyMatch(status -> status.code().equals(item.status()))).orElse(false);
     }
 
     private boolean matchesQuery(CarResponse car, String query) {
