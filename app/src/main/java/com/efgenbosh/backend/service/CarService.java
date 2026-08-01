@@ -70,7 +70,9 @@ public class CarService {
     @Transactional
     public CarPageResponse searchPage(String query, int page, int size, String status, Long insurerId, Long shiftId, Long contractorId, boolean overdue) {
         int safeSize = Math.max(1, Math.min(size, 100)); int safePage = Math.max(0, page);
-        List<CarResponse> allCars = search(null);
+        List<CarResponse> allCars = search(null).stream()
+            .sorted(java.util.Comparator.comparing(CarResponse::id, java.util.Comparator.reverseOrder()))
+            .toList();
         var summary = new CarSearchSummary(
             allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.CREATED, RepairCaseStatus.WAITING_PARTS, RepairCaseStatus.PARTS_RECEIVED, RepairCaseStatus.SCHEDULED, RepairCaseStatus.IN_REPAIR, RepairCaseStatus.READY)).count(),
             allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.WAITING_PARTS)).count(),
