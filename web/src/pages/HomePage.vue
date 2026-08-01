@@ -376,7 +376,13 @@ async function loadDirectories() {
   }
 }
 
+async function loadVehicleMakes() {
+  if (vehicleMakes.value.length) return
+  try { vehicleMakes.value = await requestJson('/api/v1/directories/vehicle-catalog/makes') } catch (error) { showToast(`Марки автомобилей не загружены: ${error.message}`) }
+}
+
 async function loadVehicleModels() {
+  await loadVehicleMakes()
   const make = vehicleMakes.value.find((item) => item.name === carForm.value.vehicleMake)
   vehicleMakeSelected.value = Boolean(make)
   vehicleModelSelected.value = false
@@ -430,7 +436,7 @@ function openStandaloneWorkOrder() {
 }
 
 function openCarForm() {
-  loadDirectories()
+  loadVehicleMakes()
   modal.value = null
   editingCar.value = null
   carForm.value = emptyCarForm()
