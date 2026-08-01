@@ -137,6 +137,21 @@ npm run build
 
 ## Документация
 
+## Dev deployment
+
+Ветка `dev` является источником тестового деплоя. Push в `dev` запускает
+`.github/workflows/deploy-dev.yml`: GitHub Actions проверяет backend и frontend,
+собирает релиз и передаёт его на тестовый сервер. Сервер заменяет JAR только
+после остановки Java-сервиса, сохраняет предыдущий runtime, запускает smoke-check
+и при ошибке восстанавливает предыдущий JAR и frontend.
+
+В GitHub Environment `test` должны быть настроены:
+
+- secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_HOST_FINGERPRINT`;
+- variable: `PUBLIC_BASE_URL` — например `http://139.100.237.243:8088`.
+
+Пароли БД и JWT-секреты остаются только в `/etc/efgen-bosh/test` на сервере.
+
 - [Этап 0](docs/stage-0-foundation.md)
 - [Этап 1.1: база пользователей и ролей](docs/stage-1-auth-database.md)
 - [Архитектурное решение](docs/adr/0001-modular-monolith.md)

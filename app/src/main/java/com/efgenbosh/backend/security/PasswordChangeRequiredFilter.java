@@ -69,6 +69,13 @@ public class PasswordChangeRequiredFilter extends OncePerRequestFilter {
         if (path.equals("/api/health") || path.startsWith("/api/health/")) {
             return true;
         }
+        if (
+            "POST".equalsIgnoreCase(method)
+                && ("/api/auth/register".equals(path)
+                    || "/api/auth/login".equals(path))
+        ) {
+            return true;
+        }
         if ("GET".equalsIgnoreCase(method) && "/api/auth/me".equals(path)) {
             return true;
         }

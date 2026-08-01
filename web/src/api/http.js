@@ -1,4 +1,6 @@
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8081'
+// API paths below already include the `/api` prefix. Keep the base URL host-only
+// even if a deployment environment accidentally provides a trailing `/api`.
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8081').replace(/\/api\/?$/, '')
 
 function accessToken() {
   return typeof localStorage === 'undefined' ? null : localStorage.getItem('efgen_access_token')
@@ -32,6 +34,7 @@ function notifyApiError(message, status) {
 
 export async function requestJson(path, options = {}) {
   let response
+  const isPublicAuthRequest = /^\/api\/auth\/(register|login)$/.test(path)
 
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
@@ -39,7 +42,7 @@ export async function requestJson(path, options = {}) {
       credentials: options.credentials || 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(accessToken()
+        ...(!isPublicAuthRequest && accessToken()
           ? { Authorization: `Bearer ${accessToken()}` }
           : {}),
         ...(options.headers || {}),
