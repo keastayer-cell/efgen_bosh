@@ -77,9 +77,16 @@ const expandedCaseId = ref(null)
 const expandedCaseParts = ref([])
 const caseActionModal = ref(null)
 const caseActionForm = ref({ contractorId: '', appointmentDate: '', appointmentTime: '', receivedBy: '', comment: '' })
+let caseActionObserver = null
 const caseDocumentsVisible = ref(false)
 const statusLabels = { CREATED: 'Создан', WAITING_PARTS: 'Ожидание деталей', PARTS_RECEIVED: 'Детали поступили', SCHEDULED: 'Запись на ремонт', IN_REPAIR: 'Ремонт', READY: 'Готов к выдаче', DELIVERED: 'Автомобиль выдан' }
 const statusLabel = (status) => statusLabels[status] || status
+
+function removeClosedCaseAction() {
+  document.querySelectorAll('.case-action-bar button').forEach((button) => {
+    if (button.textContent.trim() === 'Закрыть случай') button.remove()
+  })
+}
 const modal = ref(null)
 const toast = ref('')
 let toastTimer = null
@@ -1159,6 +1166,9 @@ onMounted(() => {
   document.addEventListener('change', handleVehicleFieldChange)
   document.addEventListener('change', handleWorkLineChange)
   document.addEventListener('click', (event) => { const row = event.target.closest('.case-row'); if (!row) return; const index = Array.from(document.querySelectorAll('.case-row')).indexOf(row); const item = paginatedRepairCases.value[index]; if (!item) return; if (event.target.closest('.case-row-details-button')) { event.stopPropagation(); toggleCaseRow(item) } else openCaseDetail(item) })
+  caseActionObserver = new MutationObserver(removeClosedCaseAction)
+  caseActionObserver.observe(document.body, { childList: true, subtree: true })
+  removeClosedCaseAction()
   if (token.value) {
     loadRepairRegistry()
     loadRepairCaseStatuses()
@@ -1171,6 +1181,7 @@ onUnmounted(() => {
   window.removeEventListener('efgen-api-error', handleApiError)
   document.removeEventListener('change', handleVehicleFieldChange)
   document.removeEventListener('change', handleWorkLineChange)
+  caseActionObserver?.disconnect()
   window.clearTimeout(toastTimer)
 })
 
