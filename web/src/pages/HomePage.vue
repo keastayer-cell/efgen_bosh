@@ -382,6 +382,11 @@ async function loadDirectories() {
   }
 }
 
+async function loadWorkCatalog() {
+  if (workCatalog.value.length) return
+  try { workCatalog.value = await requestJson('/api/v1/directories/works') } catch (error) { showToast(`Работы не загружены: ${error.message}`) }
+}
+
 async function loadContractors() {
   if (contractors.value.length) return
   try {
@@ -824,6 +829,7 @@ function attachWorkCatalogSuggestions() {
 async function openWorkOrder(car, caseItem = null) {
   if (!caseItem && caseDetailVisible.value && selectedRegistryCase.value) caseItem = selectedRegistryCase.value
   if (caseItem) { caseDetailVisible.value = true; caseDetailTab.value = 'works' }
+  await loadWorkCatalog()
   modal.value = null
   selectedWorkOrderCar.value = car
   selectedWorkOrderCase.value = caseItem
@@ -844,7 +850,8 @@ async function openWorkOrder(car, caseItem = null) {
   workOrderVisible.value = !caseItem
 }
 
-function addWorkOrderLine() {
+async function addWorkOrderLine() {
+  await loadWorkCatalog()
   workCatalogPickerId.value = ''
   workCatalogPickerVisible.value = true
 }
