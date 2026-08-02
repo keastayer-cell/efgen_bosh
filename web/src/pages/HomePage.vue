@@ -1133,6 +1133,13 @@ function showToast(message) {
 }
 
 function handleApiError(event) {
+  if (event.detail?.status === 401) {
+    localStorage.removeItem(tokenKey)
+    localStorage.removeItem(userKey)
+    token.value = null
+    user.value = null
+    authError.value = event.detail.message || 'Сессия истекла. Войдите в систему снова.'
+  }
   showToast(event.detail?.message || 'Не удалось выполнить запрос.')
 }
 

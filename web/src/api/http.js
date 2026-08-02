@@ -7,6 +7,8 @@ function accessToken() {
 }
 
 function apiErrorMessage(body, status) {
+  if (status === 401) return 'Сессия истекла или отсутствует. Войдите в систему снова.'
+  if (status === 403) return 'Недостаточно прав для выполнения этого действия.'
   if (typeof body === 'string' && body.trim()) return body.trim()
   if (body && typeof body.error === 'string' && body.error.trim()) return body.error.trim()
   if (body && typeof body.message === 'string' && body.message.trim()) return body.message.trim()

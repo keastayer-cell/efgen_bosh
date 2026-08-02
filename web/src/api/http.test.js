@@ -23,7 +23,7 @@ describe('requestJson', () => {
     }))
 
     await expect(requestJson('/api/private')).rejects.toMatchObject({
-      message: 'Требуется авторизация.',
+      message: 'Сессия истекла или отсутствует. Войдите в систему снова.',
       status: 401,
     })
   })
