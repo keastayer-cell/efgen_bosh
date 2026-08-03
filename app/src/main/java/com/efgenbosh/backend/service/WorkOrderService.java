@@ -68,7 +68,7 @@ public class WorkOrderService {
     @Transactional
     public WorkOrderResponse saveCase(Long carId, Long caseId, WorkOrderRequest request, Long userId) {
         RepairCase repairCase = ensureCase(carId, caseId);
-        if ("CLOSED".equals(repairCase.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Закрытый страховой случай доступен только для просмотра.");
+        if ("DELIVERED".equals(repairCase.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Выданная машина доступна только для просмотра.");
         WorkOrder order = orders.findByRepairCaseId(caseId).orElseGet(() -> createCaseDraft(repairCase, userId));
         applyRequest(order, request); order.touch();
         WorkOrder saved = orders.save(order);

@@ -4,13 +4,10 @@ import java.util.Arrays;
 
 public enum RepairCaseStatus {
     CREATED(1, "Создан"),
-    WAITING_PARTS(2, "Ждём детали"),
+    WAITING_PARTS(2, "Ждем детали"),
     PARTS_RECEIVED(3, "Детали поступили"),
     SCHEDULED(4, "Запись на ремонт"),
-    IN_REPAIR(5, "Ремонт"),
-    READY(6, "Готов к выдаче"),
-    DELIVERED(7, "Выдан"),
-    CLOSED(8, "Закрыт");
+    DELIVERED(5, "Машина выдана");
 
     private final int id;
     private final String label;

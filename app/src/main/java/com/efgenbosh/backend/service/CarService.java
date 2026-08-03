@@ -75,7 +75,7 @@ public class CarService {
             .sorted(java.util.Comparator.comparing(this::latestRepairCaseId, java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())).thenComparing(CarResponse::id, java.util.Comparator.reverseOrder()))
             .toList();
         var summary = new CarSearchSummary(
-            allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.CREATED, RepairCaseStatus.WAITING_PARTS, RepairCaseStatus.PARTS_RECEIVED, RepairCaseStatus.SCHEDULED, RepairCaseStatus.IN_REPAIR, RepairCaseStatus.READY)).count(),
+            allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.CREATED, RepairCaseStatus.WAITING_PARTS, RepairCaseStatus.PARTS_RECEIVED, RepairCaseStatus.SCHEDULED)).count(),
             allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.WAITING_PARTS)).count(),
             allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.PARTS_RECEIVED)).count(),
             allCars.stream().filter(car -> currentCaseHas(car, RepairCaseStatus.DELIVERED)).count());
@@ -91,14 +91,14 @@ public class CarService {
         int from = Math.min(safePage * safeSize, all.size()); int to = Math.min(from + safeSize, all.size());
         long pages = all.isEmpty() ? 0 : (all.size() + safeSize - 1L) / safeSize;
         var statuses = statusDictionary.findAllByActiveTrueOrderBySortOrderAsc().stream().map(item -> new com.efgenbosh.backend.dto.car.RepairCaseStatusResponse(item.getId(), item.getCode(), item.getLabel())).toList();
-        var pageItems = all.subList(from, to).stream().map(car -> car.withRepairCases(filteredCases(car, status, contractorId))).toList();
+        var pageItems = all.subList(from, to).stream().map(car -> car.withRepairCases(filteredCases(car, status, contractorId, query))).toList();
         return new CarPageResponse(pageItems, safePage, safeSize, pages, all.size(), summary, statuses);
     }
 
     private boolean matchesStatus(CarResponse car, String requested) {
         if (requested == null || requested.isBlank() || "all".equalsIgnoreCase(requested)) return true;
         return switch (requested.toLowerCase()) {
-            case "active" -> currentCaseHas(car, RepairCaseStatus.CREATED, RepairCaseStatus.WAITING_PARTS, RepairCaseStatus.PARTS_RECEIVED, RepairCaseStatus.SCHEDULED, RepairCaseStatus.IN_REPAIR, RepairCaseStatus.READY);
+            case "active" -> currentCaseHas(car, RepairCaseStatus.CREATED, RepairCaseStatus.WAITING_PARTS, RepairCaseStatus.PARTS_RECEIVED, RepairCaseStatus.SCHEDULED);
             case "waiting" -> currentCaseHas(car, RepairCaseStatus.WAITING_PARTS);
             case "ready" -> currentCaseHas(car, RepairCaseStatus.PARTS_RECEIVED);
             case "delivered" -> currentCaseHas(car, RepairCaseStatus.DELIVERED);
@@ -111,9 +111,23 @@ public class CarService {
         return car.repairCases().stream().findFirst().map(item -> java.util.Arrays.stream(statuses).anyMatch(status -> status.code().equals(item.status()))).orElse(false);
     }
 
-    private List<RepairCaseRegistryResponse> filteredCases(CarResponse car, String requested, Long contractorId) {
-        return car.repairCases().stream().filter(item -> (contractorId == null || contractorId.equals(item.contractorId())) && (requested == null || requested.isBlank() || "all".equalsIgnoreCase(requested) || switch (requested.toLowerCase()) {
-            case "active" -> !RepairCaseStatus.DELIVERED.code().equals(item.status()) && !RepairCaseStatus.CLOSED.code().equals(item.status());
+    private List<RepairCaseRegistryResponse> filteredCases(CarResponse car, String requested, Long contractorId, String query) {
+        String needle = query == null ? "" : query.trim().toLowerCase();
+        Set<Long> partMatchCaseIds = needle.isBlank() ? Set.of() : parts.findAllByCarIdOrderBySortOrderAscIdAsc(car.id()).stream()
+            .filter(part -> value(part.getArticle()).toLowerCase().contains(needle)
+                || value(part.getCatalogNumber()).toLowerCase().contains(needle)
+                || value(part.getName()).toLowerCase().contains(needle))
+            .map(part -> part.getRepairCase() == null ? null : part.getRepairCase().getId())
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+        boolean vehicleMatches = matchesVehicleQuery(car, needle);
+        return car.repairCases().stream().filter(item -> (contractorId == null || contractorId.equals(item.contractorId()))
+            && (needle.isBlank() || vehicleMatches
+                || value(item.caseNumber()).toLowerCase().contains(needle)
+                || value(item.claimNumber()).toLowerCase().contains(needle)
+                || partMatchCaseIds.contains(item.id()))
+            && (requested == null || requested.isBlank() || "all".equalsIgnoreCase(requested) || switch (requested.toLowerCase()) {
+            case "active" -> !RepairCaseStatus.DELIVERED.code().equals(item.status());
             case "waiting" -> RepairCaseStatus.WAITING_PARTS.code().equals(item.status());
             case "ready" -> RepairCaseStatus.PARTS_RECEIVED.code().equals(item.status());
             case "delivered" -> RepairCaseStatus.DELIVERED.code().equals(item.status());
@@ -128,6 +142,13 @@ public class CarService {
     private boolean matchesQuery(CarResponse car, String query) {
         String needle = query == null ? "" : query.trim().toLowerCase();
         return needle.isBlank()
+            || matchesVehicleQuery(car, needle)
+            || car.repairCases().stream().anyMatch(item -> value(item.caseNumber()).toLowerCase().contains(needle) || value(item.claimNumber()).toLowerCase().contains(needle))
+            || car.parts().stream().anyMatch(part -> value(part.article()).toLowerCase().contains(needle) || value(part.catalogNumber()).toLowerCase().contains(needle));
+    }
+
+    private boolean matchesVehicleQuery(CarResponse car, String needle) {
+        return needle.isBlank()
             || String.valueOf(car.accountingNumber()).contains(needle)
             || value(car.vehicleName()).toLowerCase().contains(needle)
             || value(car.vehicleMake()).toLowerCase().contains(needle)
@@ -136,8 +157,7 @@ public class CarService {
             || value(car.vin()).toLowerCase().contains(needle)
             || value(car.ownerPhone()).toLowerCase().contains(needle)
             || value(car.ownerName()).toLowerCase().contains(needle)
-            || value(car.claimNumber()).toLowerCase().contains(needle)
-            || car.repairCases().stream().anyMatch(item -> value(item.caseNumber()).toLowerCase().contains(needle) || value(item.claimNumber()).toLowerCase().contains(needle));
+            || value(car.claimNumber()).toLowerCase().contains(needle);
     }
 
     @Transactional

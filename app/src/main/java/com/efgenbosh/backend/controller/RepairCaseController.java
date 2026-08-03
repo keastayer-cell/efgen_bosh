@@ -41,6 +41,17 @@ public class RepairCaseController {
     public RepairCaseResponse update(@PathVariable Long carId, @PathVariable Long caseId, @Valid @RequestBody RepairCaseRequest request, Authentication authentication) {
         RepairCase item = findCase(carId, caseId); ensureEditable(item); String previous=item.getStatus(); Long previousContractor = item.getContractorId(); apply(item, request); if (!previous.equals(item.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Статус меняется только бизнес-действием обращения."); item.setUpdatedBy(userId(authentication)); RepairCase saved=cases.save(item); if(!java.util.Objects.equals(previousContractor, saved.getContractorId())) record(saved, saved.getStatus(), saved.getStatus(), contractorAction(saved), userId(authentication)); return response(saved);
     }
+    @PatchMapping("/{caseId}/contractor")
+    public RepairCaseResponse updateContractor(@PathVariable Long carId, @PathVariable Long caseId, @RequestParam Long contractorId, Authentication authentication) {
+        RepairCase item = findCase(carId, caseId);
+        if (!contractors.existsById(contractorId)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Исполнитель не найден.");
+        item.setContractorId(contractorId);
+        item.setUpdatedBy(userId(authentication));
+        item.touch();
+        RepairCase saved = cases.save(item);
+        record(saved, saved.getStatus(), saved.getStatus(), contractorAction(saved), userId(authentication));
+        return response(saved);
+    }
     @DeleteMapping("/{caseId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long carId, @PathVariable Long caseId) { RepairCase item = cases.findById(caseId).filter(value -> value.getCar().getId().equals(carId)).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Страховой случай не найден.")); ensureEditable(item); cases.delete(item); }
     private void apply(RepairCase item, RepairCaseRequest request) { item.setCaseNumber(request.caseNumber().trim()); if (request.repairType() != null) item.setRepairType(validType(request.repairType())); if (request.status() != null) item.setStatus(statusCode(request.status())); item.setInsuredPerson(value(request.insuredPerson())); item.setClaimNumber(value(request.claimNumber())); item.setInsurerId(request.insurerId()); item.setContractorId(request.contractorId()); item.setShiftId(request.shiftId()); item.setAcceptedAt(request.acceptedAt()); item.setComment(value(request.comment())); item.setAppointmentDate(request.appointmentDate()); item.setAppointmentTime(request.appointmentTime()); item.setReceivedBy(value(request.receivedBy())); item.touch(); }
@@ -49,20 +60,18 @@ public class RepairCaseController {
     @PostMapping("/{caseId}/actions/{action}")
     public RepairCaseResponse action(@PathVariable Long carId, @PathVariable Long caseId, @PathVariable String action, @RequestBody(required = false) RepairCaseActionRequest request, Authentication authentication) {
         RepairCase item = cases.findById(caseId).filter(value -> value.getCar().getId().equals(carId)).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Страховой случай не найден."));
-        String required = switch (action.toUpperCase()) { case "ORDER_PARTS" -> RepairCaseStatus.CREATED.code(); case "SCHEDULE_REPAIR" -> RepairCaseStatus.PARTS_RECEIVED.code(); case "START_REPAIR" -> RepairCaseStatus.SCHEDULED.code(); case "FINISH_REPAIR" -> RepairCaseStatus.IN_REPAIR.code(); case "DELIVER" -> RepairCaseStatus.READY.code(); default -> null; };
+        String required = switch (action.toUpperCase()) { case "ORDER_PARTS" -> RepairCaseStatus.CREATED.code(); case "SCHEDULE_REPAIR" -> RepairCaseStatus.PARTS_RECEIVED.code(); case "DELIVER" -> RepairCaseStatus.SCHEDULED.code(); default -> null; };
         if (required == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестное действие.");
         if (!required.equals(item.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Действие недоступно для статуса «" + item.getStatus() + "».");
         String next = switch (action.toUpperCase()) {
             case "ORDER_PARTS" -> { if (parts.findAllByRepairCase_IdOrderBySortOrderAscIdAsc(caseId).isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Сначала добавьте хотя бы одну деталь."); yield RepairCaseStatus.WAITING_PARTS.code(); }
-            case "SCHEDULE_REPAIR" -> RepairCaseStatus.SCHEDULED.code();
-            case "START_REPAIR" -> RepairCaseStatus.IN_REPAIR.code();
-            case "FINISH_REPAIR" -> { var order = workOrders.findByRepairCaseId(caseId).orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нельзя завершить ремонт без выполненных работ.")); if (order.getLines() == null || order.getLines().isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нельзя завершить ремонт без выполненных работ."); yield RepairCaseStatus.READY.code(); }
+            case "SCHEDULE_REPAIR" -> { if (request == null || request.contractorId() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Выберите исполнителя для страхового случая."); yield RepairCaseStatus.SCHEDULED.code(); }
             case "DELIVER" -> RepairCaseStatus.DELIVERED.code();
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестное действие.");
         };
-        String previous = item.getStatus(); if (request != null) { if (request.contractorId() != null) item.setContractorId(request.contractorId()); if (request.appointmentDate() != null) item.setAppointmentDate(request.appointmentDate()); if (request.appointmentTime() != null) item.setAppointmentTime(request.appointmentTime()); if (request.receivedBy() != null) item.setReceivedBy(request.receivedBy().trim()); if (request.comment() != null) item.setComment(request.comment().trim()); } if ("START_REPAIR".equalsIgnoreCase(action)) item.setStartedAt(java.time.OffsetDateTime.now()); if ("DELIVER".equalsIgnoreCase(action)) item.setDeliveredAt(java.time.OffsetDateTime.now()); item.setStatus(next); item.setUpdatedBy(userId(authentication)); item.touch(); RepairCase saved = cases.save(item); record(saved, previous, next, historyAction(action, saved), userId(authentication)); return response(saved);
+        String previous = item.getStatus(); if (request != null) { if (request.contractorId() != null) item.setContractorId(request.contractorId()); if (request.appointmentDate() != null) item.setAppointmentDate(request.appointmentDate()); if (request.appointmentTime() != null) item.setAppointmentTime(request.appointmentTime()); if (request.receivedBy() != null) item.setReceivedBy(request.receivedBy().trim()); if (request.comment() != null) item.setComment(request.comment().trim()); } if ("DELIVER".equalsIgnoreCase(action)) item.setDeliveredAt(java.time.OffsetDateTime.now()); item.setStatus(next); item.setUpdatedBy(userId(authentication)); item.touch(); RepairCase saved = cases.save(item); record(saved, previous, next, historyAction(action, saved), userId(authentication)); return response(saved);
     }
-    private String humanAction(String action) { return switch (action.toUpperCase()) { case "ORDER_PARTS" -> "Заказаны детали"; case "SCHEDULE_REPAIR" -> "Автомобиль записан на ремонт"; case "START_REPAIR" -> "Ремонт начат"; case "FINISH_REPAIR" -> "Ремонт завершён"; case "DELIVER" -> "Автомобиль выдан"; case "CLOSE" -> "Случай закрыт"; default -> "Изменение обращения"; }; }
+    private String humanAction(String action) { return switch (action.toUpperCase()) { case "ORDER_PARTS" -> "Заказаны детали"; case "SCHEDULE_REPAIR" -> "Автомобиль записан на ремонт"; case "DELIVER" -> "Машина выдана"; default -> "Изменение обращения"; }; }
     private String historyAction(String action, RepairCase item) { String result = humanAction(action); if ("SCHEDULE_REPAIR".equalsIgnoreCase(action)) { var contractor = item.getContractorId() == null ? null : contractors.findById(item.getContractorId()).orElse(null); result += ". Исполнитель: " + (contractor == null ? "не указан" : contractor.getShortName()) + ". Дата: " + (item.getAppointmentDate() == null ? "не указана" : item.getAppointmentDate()) + (item.getAppointmentTime() == null ? "" : ", время: " + item.getAppointmentTime()); } return result; }
     private Long userId(Authentication authentication) { Object principal = authentication == null ? null : authentication.getPrincipal(); return principal instanceof AppUserPrincipal user ? user.getUserId() : null; }
     private void record(RepairCase item,String previous,String next,String comment,Long userId){ RepairCaseHistory event=new RepairCaseHistory(); event.setRepairCase(item); event.setPreviousStatus(previous); event.setNewStatus(next); event.setComment(comment); event.setCreatedBy(userId); history.save(event); }
@@ -70,6 +79,6 @@ public class RepairCaseController {
     private RepairCase findCase(Long carId, Long caseId) { return cases.findById(caseId).filter(value -> value.getCar().getId().equals(carId)).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Страховой случай не найден.")); }
     private RepairCaseResponse response(RepairCase item) { String name = item.getCreatedBy() == null ? null : users.findById(item.getCreatedBy()).map(user -> user.getName()).orElse("Пользователь #" + item.getCreatedBy()); return RepairCaseResponse.from(item, name); }
     private Car ensureCar(Long id) { return cars.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Автомобиль не найден.")); }
-    private void ensureEditable(RepairCase item) { if (RepairCaseStatus.CLOSED.code().equals(item.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Закрытый страховой случай доступен только для просмотра."); }
+    private void ensureEditable(RepairCase item) { if (RepairCaseStatus.DELIVERED.code().equals(item.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Выданная машина доступна только для просмотра."); }
     private String value(String value) { return value == null ? "" : value.trim(); }
 }

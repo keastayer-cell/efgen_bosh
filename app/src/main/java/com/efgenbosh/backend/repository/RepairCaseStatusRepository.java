@@ -7,5 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RepairCaseStatusRepository extends JpaRepository<RepairCaseStatusEntity, Integer> {
     List<RepairCaseStatusEntity> findAllByActiveTrueOrderBySortOrderAsc();
+    List<RepairCaseStatusEntity> findAllByActiveTrueOrderByIdAsc();
     Optional<RepairCaseStatusEntity> findByCodeAndActiveTrue(String code);
 }

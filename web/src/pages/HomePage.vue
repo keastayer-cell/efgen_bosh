@@ -23,6 +23,8 @@ const repairRegistry = ref([])
 const caseSearch = ref('')
 const caseStatusFilter = ref('ALL')
 const caseContractorFilter = ref('')
+const editingContractorCaseId = ref(null)
+const savingContractorCaseId = ref(null)
 const caseStatusOptions = ref([{ code: 'ALL', label: 'Все' }])
 const casePage = ref(0)
 const casePageSize = ref(20)
@@ -63,6 +65,9 @@ const insuranceVehiclePickerVisible = ref(false)
 const insuranceCaseCreateVisible = ref(false)
 const repairVinSearch = ref('')
 const repairVehicleCandidates = ref([])
+const repairVehicleSearchBusy = ref(false)
+const repairVehicleSearchError = ref('')
+let repairVehicleSearchRequestId = 0
 const repairCasesBusy = ref(false)
 const repairCaseCar = ref(null)
 const editingRepairCase = ref(null)
@@ -80,15 +85,18 @@ const caseParts = ref([])
 const expandedCaseId = ref(null)
 const expandedCaseParts = ref([])
 const caseActionModal = ref(null)
+const scheduleRepairModal = ref(false)
 const caseActionForm = ref({ contractorId: '', appointmentDate: '', appointmentTime: '', receivedBy: '', comment: '' })
 let caseActionObserver = null
 const caseDocumentsVisible = ref(false)
-const statusLabels = { CREATED: 'Создан', WAITING_PARTS: 'Ожидание деталей', PARTS_RECEIVED: 'Детали поступили', SCHEDULED: 'Запись на ремонт', IN_REPAIR: 'Ремонт', READY: 'Готов к выдаче', DELIVERED: 'Автомобиль выдан' }
+const statusLabels = { CREATED: 'Создан', WAITING_PARTS: 'Ждем детали', PARTS_RECEIVED: 'Детали поступили', SCHEDULED: 'Запись на ремонт', DELIVERED: 'Машина выдана' }
 const statusLabel = (status) => statusLabels[status] || status
 
 function removeClosedCaseAction() {
   document.querySelectorAll('.case-action-bar button').forEach((button) => {
     if (button.textContent.trim() === 'Закрыть случай') button.remove()
+    if (button.textContent.trim() === 'Начать ремонт') button.textContent = 'Выдать автомобиль'
+    if (button.textContent.trim() === 'Завершить ремонт') button.remove()
   })
 }
 const modal = ref(null)
@@ -223,6 +231,11 @@ async function loadRepairRegistry() {
     caseTotalItems.value = result.totalItems
     caseTotalPagesFromApi.value = result.totalPages
     syncCaseRowMeta()
+    if (caseSearch.value.trim() && repairRegistry.value.length) {
+      const first = repairRegistry.value[0]
+      expandedCaseId.value = first.id
+      expandedCaseParts.value = await requestJson(`/api/v1/cars/${first.carId}/repair-cases/${first.id}/parts`).catch(() => [])
+    }
   } catch (error) { showToast(`Страховые случаи не загружены: ${error.message}`) }
 }
 
@@ -243,6 +256,11 @@ async function openCaseDetail(item) {
   casePartContext.value = item
   repairCaseCar.value = mappedCars.value.find((car) => car.id === item.carId) || { id: item.carId, number: item.accountingNumber, vehicle: `${item.vehicleMake} ${item.vehicleModel}`, vin: item.vin, registration: item.registrationNumber, ownerName: item.ownerName, ownerPhone: item.ownerPhone, parts: [] }
   caseParts.value = []; caseDetailTab.value = 'main'; caseDetailVisible.value = true
+  nextTick(() => {
+    const contractorPanel = document.querySelector('.case-detail-contractor')
+    contractorPanel?.classList.remove('is-editing')
+    contractorPanel?.classList.toggle('has-contractor', Boolean(item.contractorId))
+  })
   const [history, parts, detailWorkOrder, detailRecord] = await Promise.all([
     requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/history`).catch(() => []),
     requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/parts`).catch(() => []),
@@ -282,8 +300,25 @@ async function saveCaseContractor() {
     const history = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/history`)
     carHistory.value = history.map((event) => ({ ...event, actor: event.createdByName || 'Система', details: `${event.createdByName || 'Система'} · ${event.comment || `${statusLabel(event.previousStatus)} → ${statusLabel(event.newStatus)}`}` }))
     await Promise.all([loadRepairRegistry(), loadRepairCaseStatuses()])
+    document.querySelector('.case-detail-contractor')?.classList.remove('is-editing')
     showToast('Исполнитель заменён')
   } catch (error) { showToast(error.message) }
+}
+
+async function saveInlineCaseContractor(item, event) {
+  const contractorId = event.target.value
+  if (!contractorId || savingContractorCaseId.value === item.id) return
+  savingContractorCaseId.value = item.id
+  try {
+    const saved = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/contractor?contractorId=${encodeURIComponent(contractorId)}`, { method: 'PATCH' })
+    item.contractorId = saved.contractorId
+    editingContractorCaseId.value = null
+    showToast('Исполнитель заменён')
+  } catch (error) {
+    showToast(error.message)
+  } finally {
+    savingContractorCaseId.value = null
+  }
 }
 
 async function toggleCaseRow(item) {
@@ -308,7 +343,9 @@ async function toggleCasePartReceived(item, part) {
 async function runCaseAction(action) {
   const item = selectedRegistryCase.value; if (!item) return
   if (action === 'CLOSE') return
-  if (action === 'SCHEDULE_REPAIR' || action === 'DELIVER') { if (action === 'SCHEDULE_REPAIR') await loadContractors(); caseActionModal.value = action; caseActionForm.value = { contractorId: item.contractorId ? String(item.contractorId) : '', appointmentDate: '', appointmentTime: '', receivedBy: action === 'DELIVER' ? 'Система' : '', comment: '' }; return }
+  if (action === 'START_REPAIR' && item.status === 'SCHEDULED') action = 'DELIVER'
+  if (action === 'SCHEDULE_REPAIR') { await loadContractors(); caseActionForm.value = { contractorId: item.contractorId ? String(item.contractorId) : '', appointmentDate: '', appointmentTime: '', receivedBy: '', comment: '' }; scheduleRepairModal.value = true; return }
+  if (action === 'DELIVER') { caseActionModal.value = action; caseActionForm.value = { contractorId: '', appointmentDate: '', appointmentTime: '', receivedBy: 'Система', comment: '' }; return }
   try { const updated = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/actions/${action}`, { method: 'POST' }); selectedRegistryCase.value = updated; await loadRepairRegistry(); showToast('Действие выполнено') } catch (error) { showToast(error.message) }
 }
 
@@ -318,7 +355,28 @@ async function submitCaseAction() {
   try { const updated = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/actions/${action}`, { method: 'POST', body: JSON.stringify(action === 'DELIVER' ? { ...caseActionForm.value, receivedBy: '' } : caseActionForm.value) }); selectedRegistryCase.value = updated; caseActionModal.value = null; await loadRepairRegistry(); showToast('Действие сохранено') } catch (error) { showToast(error.message) }
 }
 
+async function submitScheduleRepair() {
+  const item = selectedRegistryCase.value
+  if (!item || !caseActionForm.value.contractorId) { showToast('Выберите исполнителя для страхового случая.'); return }
+  try {
+    const updated = await requestJson(`/api/v1/cars/${item.carId}/repair-cases/${item.id}/actions/SCHEDULE_REPAIR`, { method: 'POST', body: JSON.stringify(caseActionForm.value) })
+    selectedRegistryCase.value = updated
+    scheduleRepairModal.value = false
+    await loadRepairRegistry()
+    showToast('Запись на ремонт сохранена')
+  } catch (error) { showToast(error.message) }
+}
+
 function openCaseDocuments() { caseDocumentsVisible.value = true }
+
+function syncContractorPanel() {
+  nextTick(() => {
+    const panel = document.querySelector('.case-detail-contractor')
+    if (!panel) return
+    panel.classList.remove('is-editing')
+    panel.classList.toggle('has-contractor', Boolean(selectedRegistryCase.value?.contractorId))
+  })
+}
 
 const filteredRepairCases = computed(() => repairRegistry.value)
 const visibleRepairCases = computed(() => repairRegistry.value)
@@ -345,8 +403,7 @@ const caseReadiness = computed(() => {
   if (!item) return { icon: '⚪', label: 'Нет данных', tone: 'neutral' }
   if (item.status === 'WAITING_PARTS') return { icon: '🟡', label: 'Ждём детали', tone: 'warning' }
   if (item.status === 'PARTS_RECEIVED') return { icon: '🟢', label: 'Можно записывать на ремонт', tone: 'success' }
-  if (item.status === 'SCHEDULED' || item.status === 'IN_REPAIR') return { icon: '🔵', label: 'Автомобиль в ремонте', tone: 'info' }
-  if (item.status === 'READY') return { icon: '✅', label: 'Готов к выдаче', tone: 'success' }
+  if (item.status === 'SCHEDULED') return { icon: '🔵', label: 'Записан на ремонт', tone: 'info' }
   return { icon: '⚪', label: statusLabel(item.status), tone: 'neutral' }
 })
 const caseRemainingTasks = computed(() => {
@@ -355,10 +412,6 @@ const caseRemainingTasks = computed(() => {
   const tasks = []
   if (item.status === 'CREATED' && !caseParts.value.length) tasks.push('Добавьте хотя бы одну деталь и нажмите «Заказать детали».')
   if (item.status === 'WAITING_PARTS' && caseReceivedPartsCount.value < caseParts.value.length) tasks.push(`Не получены ${caseParts.value.length - caseReceivedPartsCount.value} детали.`)
-  if (item.status === 'PARTS_RECEIVED' && !item.contractorId) tasks.push('Не назначен исполнитель.')
-  if (item.status === 'PARTS_RECEIVED' && !item.appointmentDate) tasks.push('Не выбрана дата ремонта.')
-  if ((item.status === 'SCHEDULED' || item.status === 'IN_REPAIR') && !(workOrder.value?.id)) tasks.push('Не сформирован заказ-наряд.')
-  if (item.status === 'IN_REPAIR' && !(workOrder.value?.lines || []).length) tasks.push('Добавьте выполненную работу.')
   return tasks
 })
 
@@ -526,16 +579,37 @@ async function openRepairCases(car) {
 }
 
 function openRepairMenu() { repairMenuVisible.value = true }
-function startPlaceholderRepair() { repairMenuVisible.value = false; selectedCreationType.value = 'REPAIR'; repairVinSearch.value = ''; repairVehicleCandidates.value = mappedCars.value; insuranceVehiclePickerVisible.value = true }
-function startInsuranceCaseFlow() {
-  repairMenuVisible.value = false; selectedCreationType.value = 'INSURANCE'
-  repairVinSearch.value = ''
-  repairVehicleCandidates.value = mappedCars.value
+function startPlaceholderRepair() {
+  repairMenuVisible.value = false; selectedCreationType.value = 'REPAIR'
+  repairVinSearch.value = ''; repairVehicleCandidates.value = []; repairVehicleSearchError.value = ''
   insuranceVehiclePickerVisible.value = true
 }
-function searchRepairVehicle() {
-  const query = repairVinSearch.value.trim().toLowerCase()
-  repairVehicleCandidates.value = mappedCars.value.filter((car) => !query || String(car.vin || '').toLowerCase().includes(query))
+function startInsuranceCaseFlow() {
+  repairMenuVisible.value = false; selectedCreationType.value = 'INSURANCE'
+  repairVinSearch.value = ''; repairVehicleCandidates.value = []; repairVehicleSearchError.value = ''
+  insuranceVehiclePickerVisible.value = true
+}
+async function searchRepairVehicle() {
+  const query = repairVinSearch.value.trim()
+  repairVehicleCandidates.value = []; repairVehicleSearchError.value = ''
+  if (!query) return
+  const requestId = ++repairVehicleSearchRequestId
+  repairVehicleSearchBusy.value = true
+  try {
+    const result = await requestJson(`/api/v1/cars/search?q=${encodeURIComponent(query)}`)
+    if (requestId !== repairVehicleSearchRequestId) return
+    repairVehicleCandidates.value = (Array.isArray(result) ? result : []).map((car) => ({
+      ...car,
+      number: car.accountingNumber,
+      registration: car.registrationNumber || 'Госномер не указан',
+      vehicle: [car.vehicleMake, car.vehicleModel].filter(Boolean).join(' ') || car.vehicleName,
+      ownerPhone: car.ownerPhone || '',
+    }))
+  } catch (error) {
+    if (requestId === repairVehicleSearchRequestId) repairVehicleSearchError.value = error.message
+  } finally {
+    if (requestId === repairVehicleSearchRequestId) repairVehicleSearchBusy.value = false
+  }
 }
 async function chooseRepairVehicle(car) {
   if (selectedCreationType.value === 'INSURANCE') await loadInsurers()
@@ -904,8 +978,8 @@ function workOrderTotal() {
   return linesTotal + partsTotal
 }
 
-async function saveWorkOrder() {
-  if (!selectedWorkOrderCar.value || !workOrder.value) return
+async function saveWorkOrder(silent = false) {
+  if (!selectedWorkOrderCar.value || !workOrder.value) return false
   try {
     const standalone = !selectedWorkOrderCar.value.id
     const casePath = selectedWorkOrderCase.value ? `/api/v1/cars/${selectedWorkOrderCar.value.id}/repair-cases/${selectedWorkOrderCase.value.id}/work-order` : `/api/v1/cars/${selectedWorkOrderCar.value.id}/work-order`
@@ -929,9 +1003,11 @@ async function saveWorkOrder() {
       }),
     })
     workOrder.value = { ...result, lines: (result.lines || []).map((line) => ({ ...line, catalogId: catalogIdForWorkLine(line) })), partLines: result.partLines || [] }
-    showToast('Данные сохранены')
+    if (!silent) showToast('Данные сохранены')
+    return true
   } catch (error) {
     showToast(error.message)
+    return false
   }
 }
 
@@ -1182,7 +1258,12 @@ onMounted(() => {
   window.addEventListener('efgen-api-error', handleApiError)
   document.addEventListener('change', handleVehicleFieldChange)
   document.addEventListener('change', handleWorkLineChange)
-  document.addEventListener('click', (event) => { const row = event.target.closest('.case-row'); if (!row) return; const index = Array.from(document.querySelectorAll('.case-row')).indexOf(row); const item = paginatedRepairCases.value[index]; if (!item) return; if (event.target.closest('.case-row-details-button')) { event.stopPropagation(); toggleCaseRow(item) } else openCaseDetail(item) })
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest?.('.case-detail-contractor-card strong')
+    if (!trigger) return
+    trigger.closest('.case-detail-contractor')?.classList.toggle('is-editing')
+  })
+  document.addEventListener('click', (event) => { const row = event.target.closest('.case-row'); if (!row) return; const index = Array.from(document.querySelectorAll('.case-row')).indexOf(row); const item = paginatedRepairCases.value[index]; if (!item) return; if (event.target.closest('.case-row-details-button')) { event.stopPropagation(); toggleCaseRow(item) } else if (event.target.closest('.cell') === row.querySelector('.cell:nth-child(4)')) { event.stopPropagation(); openCaseDetail(item).then(() => { caseDetailTab.value = 'contractor' }) } else openCaseDetail(item) })
   caseActionObserver = new MutationObserver(removeClosedCaseAction)
   caseActionObserver.observe(document.body, { childList: true, subtree: true })
   removeClosedCaseAction()
@@ -1215,6 +1296,7 @@ watch([caseSearch, caseStatusFilter, caseContractorFilter], () => {
   window.__efgenCaseTimer = window.setTimeout(loadRepairRegistry, 250)
 })
 watch(paginatedRepairCases, syncCaseRowMeta)
+watch([caseDetailVisible, caseDetailTab, selectedRegistryCase], syncContractorPanel)
 </script>
 
 <template>
@@ -1308,10 +1390,10 @@ watch(paginatedRepairCases, syncCaseRowMeta)
       </section>
 
       <section v-if="activeSection === 'cases'" class="workspace cases-workspace">
-        <div class="toolbar"><label class="search-field"><span>⌕</span><input v-model="caseSearch" type="search" placeholder="Поиск по VIN, номеру автомобиля или номеру дела" /></label><div class="case-status-filters"><button v-for="filter in caseStatusOptions" :key="filter.code" type="button" class="filter" :class="{ 'is-active': caseStatusFilter === filter.code }" @click="caseStatusFilter = filter.code">{{ filter.label }}</button></div><button class="button button-primary" type="button" @click="openRepairMenu">＋ Создать страховой случай</button></div>
+        <div class="toolbar"><label class="search-field"><span>⌕</span><input v-model="caseSearch" type="search" placeholder="Поиск по VIN, номеру авто, номеру дела или артикулу детали" /></label><div class="case-status-filters"><button v-for="filter in caseStatusOptions" :key="filter.code" type="button" class="filter" :class="{ 'is-active': caseStatusFilter === filter.code }" @click="caseStatusFilter = filter.code">{{ filter.label }}</button></div><button class="button button-primary" type="button" @click="openRepairMenu">＋ Создать страховой случай</button></div>
         <div class="case-contractor-filter-row"><label>Исполнитель<select v-model="caseContractorFilter" aria-label="Фильтр по исполнителю"><option value="">Все исполнители</option><option v-for="item in contractors" :key="item.id" :value="String(item.id)">{{ item.shortName || item.fullName }}</option></select></label></div>
         <div class="list-head case-list-head"><span>Автомобиль</span><span>Страховой случай</span><span>Страховая компания</span><span>Исполнитель</span><span>Статус</span><span>Создан</span></div>
-        <div class="cars-list"><template v-for="item in visibleRepairCases" :key="item.id"><article class="car-row case-row" :class="{ 'is-selected': expandedCaseId === item.id }"><div class="cell"><strong>{{ item.vehicleMake }} {{ item.vehicleModel }}</strong><small>VIN {{ item.vin }}</small><small>{{ item.registrationNumber }} · {{ item.ownerName }} · {{ item.ownerPhone }}</small></div><div class="cell"><strong>№{{ item.caseNumber }}</strong></div><div class="cell"><span class="insurance-pill">{{ insurers.find((insurer) => insurer.id === item.insurerId)?.name || 'Страховая не указана' }}</span></div><div class="cell">{{ contractors.find((contractor) => contractor.id === item.contractorId)?.shortName || '—' }}</div><div class="cell case-parts-progress-cell"><div class="parts-progress-ring" :style="{ '--parts-progress': item.partsTotal ? (item.partsReceived / item.partsTotal) * 100 + '%' : '0%' }"><span>{{ item.partsReceived || 0 }}/{{ item.partsTotal || 0 }}</span></div><div><strong>{{ item.partsReceived || 0 }} из {{ item.partsTotal || 0 }}</strong><small>{{ item.partsTotal ? (item.partsReceived === item.partsTotal ? 'Поступление по графику' : 'Ожидание деталей') : 'Детали не добавлены' }}</small></div></div><div class="cell"><span class="case-status">{{ statusLabel(item.status) }}</span></div><div class="cell muted-cell"><span>{{ item.createdAt ? item.createdAt.slice(0, 10) : '—' }}</span><button type="button" class="case-row-details-button" @click.stop="toggleCaseRow(item)">{{ expandedCaseId === item.id ? 'Скрыть детали' : 'Открыть' }}</button></div></article><section v-if="expandedCaseId === item.id" class="case-row-details"><div class="case-row-details-head"><strong>Детали страхового случая №{{ item.caseNumber }}</strong><span>{{ expandedCaseParts.length }} деталей · {{ expandedCaseParts.filter((part) => part.received).length }} получено</span></div><div v-if="expandedCaseParts.length" class="case-parts-table"><div class="case-parts-table-head"><span>Деталь</span><span>Артикул</span><span>Поставщик</span><span>Плановая поставка</span><span>Статус</span><span>Поступила</span></div><div v-for="part in expandedCaseParts" :key="part.id" class="case-parts-table-row"><span><strong>{{ part.name }}</strong><small>{{ part.comment || 'Без комментария' }}</small></span><span>{{ part.article || '—' }}</span><span>{{ suppliers.find((supplier) => supplier.id === part.supplierId)?.name || '—' }}</span><span>{{ part.expectedDate || '—' }}</span><span class="case-part-status-cell"><div class="case-part-status-actions"><b :class="part.received ? 'part-received' : 'part-waiting'">{{ part.received ? 'Получена' : 'Ожидается' }}</b><button type="button" class="part-receipt-button" :class="{ 'is-received': part.received }" @click.stop="toggleCasePartReceived(item, part)">{{ part.received ? 'Отменить' : 'Отметить поступление' }}</button></div></span><span class="case-received-date">{{ part.received ? part.receivedAt : '—' }}</span></div></div><p v-else class="empty-state">У этого страхового случая деталей пока нет.</p></section></template><p v-if="!visibleRepairCases.length" class="empty-state">Страховых случаев пока нет. Создайте первый через «＋ Ремонт».</p></div>
+        <div class="cars-list"><template v-for="item in visibleRepairCases" :key="item.id"><article class="car-row case-row" :class="{ 'is-selected': expandedCaseId === item.id }"><div class="cell"><strong>{{ item.vehicleMake }} {{ item.vehicleModel }}</strong><small>VIN {{ item.vin }}</small><small>{{ item.registrationNumber }} · {{ item.ownerName }} · {{ item.ownerPhone }}</small></div><div class="cell"><strong>№{{ item.caseNumber }}</strong></div><div class="cell"><span class="insurance-pill">{{ insurers.find((insurer) => insurer.id === item.insurerId)?.name || 'Страховая не указана' }}</span></div><div class="cell inline-contractor-cell"><select v-if="editingContractorCaseId === item.id" class="inline-contractor-select" :value="String(item.contractorId || '')" :disabled="savingContractorCaseId === item.id" @click.stop @change.stop="saveInlineCaseContractor(item, $event)"><option value="" disabled>Выберите исполнителя</option><option v-for="contractor in contractors" :key="contractor.id" :value="String(contractor.id)">{{ contractor.shortName || contractor.fullName }}</option></select><button v-else type="button" class="inline-contractor-button" @click.stop="editingContractorCaseId = item.id; loadContractors()">{{ contractors.find((contractor) => contractor.id === item.contractorId)?.shortName || 'Не назначен' }}</button></div><div class="cell case-parts-progress-cell"><div class="parts-progress-ring" :style="{ '--parts-progress': item.partsTotal ? (item.partsReceived / item.partsTotal) * 100 + '%' : '0%' }"><span>{{ item.partsReceived || 0 }}/{{ item.partsTotal || 0 }}</span></div><div><strong>{{ item.partsReceived || 0 }} из {{ item.partsTotal || 0 }}</strong><small>{{ item.partsTotal ? (item.partsReceived === item.partsTotal ? 'Поступление по графику' : 'Ожидание деталей') : 'Детали не добавлены' }}</small></div></div><div class="cell"><span class="case-status">{{ statusLabel(item.status) }}</span></div><div class="cell muted-cell"><span>{{ item.createdAt ? item.createdAt.slice(0, 10) : '—' }}</span><button type="button" class="case-row-details-button" @click.stop="toggleCaseRow(item)">{{ expandedCaseId === item.id ? 'Скрыть детали' : 'Открыть' }}</button></div></article><section v-if="expandedCaseId === item.id" class="case-row-details"><div class="case-row-details-head"><strong>Детали страхового случая №{{ item.caseNumber }}</strong><span>{{ expandedCaseParts.length }} деталей · {{ expandedCaseParts.filter((part) => part.received).length }} получено</span></div><div v-if="expandedCaseParts.length" class="case-parts-table"><div class="case-parts-table-head"><span>Деталь</span><span>Артикул</span><span>Поставщик</span><span>Плановая поставка</span><span>Статус</span><span>Поступила</span></div><div v-for="part in expandedCaseParts" :key="part.id" class="case-parts-table-row"><span><strong>{{ part.name }}</strong><small v-if="part.comment">{{ part.comment }}</small></span><span>{{ part.article || '—' }}</span><span>{{ suppliers.find((supplier) => supplier.id === part.supplierId)?.name || '—' }}</span><span>{{ part.expectedDate || '—' }}</span><span class="case-part-status-cell"><div class="case-part-status-actions"><b :class="part.received ? 'part-received' : 'part-waiting'">{{ part.received ? 'Получена' : 'Ожидается' }}</b><button type="button" class="part-receipt-button" :class="{ 'is-received': part.received }" @click.stop="toggleCasePartReceived(item, part)">{{ part.received ? 'Отменить' : 'Отметить поступление' }}</button></div></span><span class="case-received-date">{{ part.received ? part.receivedAt : '—' }}</span></div></div><p v-else class="empty-state">У этого страхового случая деталей пока нет.</p></section></template><p v-if="!visibleRepairCases.length" class="empty-state">Страховых случаев пока нет. Создайте первый через «＋ Ремонт».</p></div>
         <section v-if="expandedCaseItem" class="case-receipt-panel"><div class="case-receipt-head"><div><strong>Детали страхового случая №{{ expandedCaseItem.caseNumber }}</strong><span>{{ statusLabel(expandedCaseItem.status) }}</span></div><small>Отметьте поступление — дата поступления сохранится автоматически.</small></div><div v-if="expandedCaseParts.length" class="case-receipt-list"><div v-for="part in expandedCaseParts" :key="part.id" class="case-receipt-row"><div><strong>{{ part.name }}</strong><small>Артикул: {{ part.article || '—' }} · Плановая дата: {{ part.expectedDate || '—' }}</small><small v-if="part.received" class="part-received-date">Поступила: {{ part.receivedAt || 'дата не указана' }}</small></div><button type="button" class="part-receipt-button" :class="part.received ? 'is-received' : ''" @click="toggleCasePartReceived(expandedCaseItem, part)">{{ part.received ? 'Получена · отменить' : 'Отметить как полученную' }}</button></div></div><p v-else class="empty-state">Деталей пока нет.</p></section>
       </section>
       <div v-if="activeSection === 'cases' && filteredRepairCases.length" class="pagination-toolbar case-pagination" aria-label="Пагинация страховых случаев"><span>Найдено: {{ caseTotalItems }}</span><button type="button" class="link-button" :disabled="casePage === 0" @click="casePage--; loadRepairRegistry()">← Назад</button><strong>Страница {{ casePage + 1 }} из {{ caseTotalPages }}</strong><button type="button" class="link-button" :disabled="casePage >= caseTotalPages - 1" @click="casePage++; loadRepairRegistry()">Вперёд →</button></div>
@@ -1360,6 +1442,7 @@ watch(paginatedRepairCases, syncCaseRowMeta)
         </div>
       </section>
     </main>
+    <div v-if="scheduleRepairModal" class="stub-overlay schedule-repair-overlay" @click.self="scheduleRepairModal = false"><form class="data-modal compact-modal schedule-repair-modal" @submit.prevent="submitScheduleRepair"><button type="button" class="icon-button" aria-label="Закрыть" @click="scheduleRepairModal = false">×</button><p class="eyebrow">Запись на ремонт</p><h2>Выберите исполнителя</h2><p class="modal-subtitle">{{ selectedRegistryCase?.vehicleMake }} {{ selectedRegistryCase?.vehicleModel }} · дело {{ selectedRegistryCase?.caseNumber }}</p><div class="data-form-grid"><label class="form-wide"><span>Исполнитель по страховому случаю *</span><select v-model="caseActionForm.contractorId" required :disabled="contractorsBusy || !contractors.length"><option value="" disabled>Выберите исполнителя</option><option v-for="contractor in contractors" :key="contractor.id" :value="String(contractor.id)">{{ contractor.shortName || contractor.fullName }}</option></select><small v-if="contractorsBusy" class="field-hint">Загружаем исполнителей…</small><small v-else-if="!contractors.length" class="field-hint">Исполнители пока не добавлены.</small></label><label><span>Дата ремонта *</span><input v-model="caseActionForm.appointmentDate" type="date" required /></label><label><span>Время ремонта *</span><input v-model="caseActionForm.appointmentTime" type="time" required /></label><label class="form-wide"><span>Комментарий</span><textarea v-model="caseActionForm.comment" rows="2" placeholder="Комментарий к записи"></textarea></label></div><p class="field-hint">Работы и исполнители по работам добавляются позже в разделе «Работы».</p><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="scheduleRepairModal = false">Отмена</button><button class="button button-primary" type="submit" :disabled="!caseActionForm.contractorId || contractorsBusy">Записать на ремонт</button></div></form></div>
 
     <footer class="global-footer"><span>Efgen Bosh · рабочий интерфейс</span><span>Данные разделов подключаются поэтапно</span></footer>
     <button v-if="false" type="button" class="standalone-order-button button button-primary" @click="openStandaloneWorkOrder">＋ Новый заказ-наряд</button>
@@ -1392,7 +1475,7 @@ watch(paginatedRepairCases, syncCaseRowMeta)
     <button v-if="carFormVisible && editingCar" type="button" class="repair-cases-button button button-primary" @click="openRepairCases(editingCar)">Страховые случаи</button>
     <div v-if="caseDetailVisible && selectedRegistryCase" class="stub-overlay" @click.self="caseDetailVisible = false"><section class="data-modal case-detail-modal"><button class="icon-button" aria-label="Закрыть" @click="caseDetailVisible = false">×</button><p class="eyebrow">Обращение · {{ statusLabel(selectedRegistryCase.status) }}</p><h2>{{ selectedRegistryCase.caseNumber }}</h2><p class="modal-subtitle">{{ selectedRegistryCase.vehicleMake }} {{ selectedRegistryCase.vehicleModel }} · VIN {{ selectedRegistryCase.vin }} · {{ selectedRegistryCase.registrationNumber }}</p><div class="case-action-bar"><span class="case-status-large">{{ statusLabel(selectedRegistryCase.status) }}</span><button v-if="selectedRegistryCase.status === 'CREATED' && caseParts.length" type="button" class="button button-cloud" @click="runCaseAction('ORDER_PARTS')">Заказать детали</button><button v-if="selectedRegistryCase.status === 'PARTS_RECEIVED'" type="button" class="button button-cloud" @click="runCaseAction('SCHEDULE_REPAIR')">Записать на ремонт</button><button v-if="selectedRegistryCase.status === 'SCHEDULED'" type="button" class="button button-cloud" @click="runCaseAction('START_REPAIR')">Начать ремонт</button><button v-if="selectedRegistryCase.status === 'IN_REPAIR'" type="button" class="button button-cloud" @click="runCaseAction('FINISH_REPAIR')">Завершить ремонт</button><button v-if="selectedRegistryCase.status === 'READY'" type="button" class="button button-cloud" @click="runCaseAction('DELIVER')">Выдать автомобиль</button><button v-if="selectedRegistryCase.status === 'DELIVERED'" type="button" class="button button-cloud" @click="runCaseAction('CLOSE')">Закрыть случай</button></div><nav class="case-detail-tabs"><button type="button" :class="{ 'is-active': caseDetailTab === 'main' }" @click="caseDetailTab = 'main'">Основное</button><button type="button" :class="{ 'is-active': caseDetailTab === 'works' }" @click="caseDetailTab = 'works'; openWorkOrder(repairCaseCar)">Работы</button><button type="button" :class="{ 'is-active': caseDetailTab === 'parts' }" @click="caseDetailTab = 'parts'">Запчасти</button><button type="button" :class="{ 'is-active': caseDetailTab === 'photos' }" @click="caseDetailTab = 'photos'; openRepairCasePhotos(selectedRegistryCase)">Фотографии</button><button type="button" :class="{ 'is-active': caseDetailTab === 'history' }" @click="caseDetailTab = 'history'">История</button><button type="button" :class="{ 'is-active': caseDetailTab === 'contractor' }" @click="caseDetailTab = 'contractor'">Исполнитель</button></nav><div v-if="caseDetailTab === 'contractor'" class="case-detail-contractor"><div class="case-detail-contractor-card"><span>Назначенный исполнитель</span><strong>{{ contractors.find((item) => item.id === selectedRegistryCase.contractorId)?.shortName || 'Не назначен' }}</strong></div><label><span>Заменить исполнителя</span><select v-model="caseContractorId" :disabled="selectedRegistryCase.status === 'CLOSED'"><option value="" disabled>Выберите исполнителя</option><option v-for="item in contractors" :key="item.id" :value="String(item.id)">{{ item.shortName }}</option></select></label><button type="button" class="button button-primary" :disabled="selectedRegistryCase.status === 'CLOSED' || !caseContractorId || caseContractorId === String(selectedRegistryCase.contractorId || '')" @click="saveCaseContractor">Сохранить исполнителя</button></div><div v-if="caseDetailTab === 'main'" class="case-detail-main"><div><span>Автомобиль</span><strong>{{ selectedRegistryCase.vehicleMake }} {{ selectedRegistryCase.vehicleModel }}</strong></div><div><span>Клиент</span><strong>{{ selectedRegistryCase.ownerName || '—' }} · {{ selectedRegistryCase.ownerPhone || '—' }}</strong></div><div><span>Страховая</span><strong>{{ insurers.find((item) => item.id === selectedRegistryCase.insurerId)?.name || '—' }}</strong></div><div><span>Исполнитель</span><strong>{{ contractors.find((item) => item.id === selectedRegistryCase.contractorId)?.shortName || '—' }}</strong></div><div><span>Создано</span><strong>{{ selectedRegistryCase.createdAt?.slice(0, 16).replace('T', ' ') }} · пользователь #{{ selectedRegistryCase.createdBy || '—' }}</strong></div></div><div v-else-if="caseDetailTab === 'works'" class="case-inline-work-order"><div v-if="workOrderBusy" class="empty-state">Загружаем работы…</div><template v-else-if="workOrder"><div class="case-detail-actions"><p>Работы обращения · {{ workOrder.lines?.length || 0 }}</p><button type="button" class="button button-primary" @click="addWorkOrderLine">＋ Добавить работу</button></div><div v-for="(line, index) in workOrder.lines" :key="line.id || `case-line-${index}`" class="case-work-line"><input v-model="line.name" placeholder="Название работы" /><select v-model="line.unit"><option value="н/ч">н/ч</option><option value="шт.">шт.</option></select><button type="button" class="link-button danger-link" @click="removeWorkOrderLine(index)">Удалить</button></div><p v-if="!workOrder.lines?.length" class="empty-state">Работы пока не добавлены.</p><button type="button" class="button button-primary" @click="saveWorkOrder">Сохранить работы</button></template></div><div v-else-if="caseDetailTab === 'parts'" class="case-detail-parts"><div class="case-detail-actions"><p>Запчасти обращения · {{ caseParts.length }}</p><button type="button" class="button button-primary" @click="openPartForm(repairCaseCar)">＋ Добавить запчасть</button></div><div class="case-parts-list"><div v-for="part in caseParts" :key="part.id" class="case-part-item"><div><strong>{{ part.name }}</strong><small>Артикул: {{ part.article || '—' }} · Поставщик: {{ suppliers.find((item) => item.id === part.supplierId)?.name || '—' }}</small><small>Ожидаемая дата: {{ part.expectedDate || '—' }}</small><small v-if="part.received" class="part-received-date">Поступила: {{ part.receivedAt || 'дата не указана' }}</small></div><div><button type="button" class="link-button" @click="openPartForm(repairCaseCar, selectedRegistryCase); editingPart = part; partForm = { name: part.name || '', article: part.article || '', supplierId: part.supplierId ? String(part.supplierId) : '', expectedDate: part.expectedDate || '', received: !!part.received, receivedAt: part.receivedAt || '', sortOrder: part.sortOrder || 0 }">Изменить</button><button type="button" class="link-button danger-link" @click="deletePart(repairCaseCar, part)">Удалить</button></div></div><div v-if="caseParts.length" class="case-receipt-inline-list"><div v-for="part in caseParts" :key="part.id" class="case-receipt-inline-row"><span><strong>{{ part.name }}</strong><small>{{ part.received ? 'Поступила: ' + (part.receivedAt || 'дата не указана') : 'Ожидается' }}</small></span><button type="button" class="part-receipt-button" :class="{ 'is-received': part.received }" :disabled="selectedRegistryCase.status === 'CLOSED'" @click="toggleCasePartReceived(selectedRegistryCase, part)">{{ part.received ? 'Получена · отменить' : 'Отметить как полученную' }}</button></div></div><p v-if="!caseParts.length" class="empty-state">Запчасти по обращению пока не добавлены.</p></div></div><div v-else-if="caseDetailTab === 'photos'" class="case-detail-photos"><div v-if="photosBusy" class="empty-state">Загружаем фотографии…</div><template v-else><div class="case-photo-grid"><div v-for="photo in carPhotos" :key="photo.id || photo.dataUrl" class="case-photo-card"><img :src="photo.dataUrl" :alt="photo.fileName || 'Фото повреждения'" /><div><small>{{ photo.fileName }}</small><button type="button" class="link-button danger-link" @click="deleteCarPhoto(photo)">Удалить</button></div></div></div><p v-if="!carPhotos.length" class="empty-state">Фотографии по обращению пока не добавлены.</p><label class="case-photo-upload"><span>Добавить фото повреждения</span><input type="file" accept="image/*" multiple @change="readCarPhotos" /></label></template></div><div v-else-if="caseDetailTab === 'history'" class="case-history-list"><div v-for="event in carHistory" :key="event.id"><strong>{{ event.createdAt?.slice(0, 16).replace('T', ' ') }}</strong><span>{{ event.details }}</span></div><p v-if="!carHistory.length" class="empty-state">История пока пуста.</p></div></section></div>
     <div v-if="repairMenuVisible" class="stub-overlay" @click.self="repairMenuVisible = false"><section class="data-modal compact-modal repair-menu-modal"><button class="icon-button" aria-label="Закрыть" @click="repairMenuVisible = false">×</button><p class="eyebrow">Создание ремонта</p><h2>Что создаём?</h2><p class="modal-subtitle">Сначала выберите тип ремонта. Страховой случай будет связан с выбранным клиентом сервиса.</p><div class="repair-type-actions"><button type="button" class="button button-primary" @click="startInsuranceCaseFlow">Страховой случай</button><button type="button" class="button button-cloud dark-button" @click="startPlaceholderRepair">Ремонт</button></div></section></div>
-    <div v-if="insuranceVehiclePickerVisible" class="stub-overlay" @click.self="insuranceVehiclePickerVisible = false"><section class="data-modal repair-picker-modal"><button class="icon-button" aria-label="Закрыть" @click="insuranceVehiclePickerVisible = false">×</button><p class="eyebrow">{{ selectedCreationType === 'INSURANCE' ? 'Страховой случай' : 'Ремонт' }}</p><h2>Выберите автомобиль клиента</h2><p class="modal-subtitle">Ищем среди созданных карточек по VIN. Без выбора автомобиля обращение создать нельзя.</p><label class="search-field repair-vin-search"><span>⌕</span><input v-model="repairVinSearch" type="search" placeholder="Введите VIN" @input="searchRepairVehicle" /></label><div class="repair-vehicle-results"><button v-for="car in repairVehicleCandidates" :key="car.id" type="button" class="repair-vehicle-option" @click="chooseRepairVehicle(car)"><strong>{{ car.vehicle }}</strong><span>VIN: {{ car.vin }} · {{ car.registration }}</span><small>{{ car.ownerName }} · {{ car.ownerPhone }}</small></button><p v-if="!repairVehicleCandidates.length" class="empty-state">Автомобили по этому VIN не найдены.</p></div></section></div>
+    <div v-if="insuranceVehiclePickerVisible" class="stub-overlay" @click.self="insuranceVehiclePickerVisible = false"><section class="data-modal repair-picker-modal"><button class="icon-button" aria-label="Закрыть" @click="insuranceVehiclePickerVisible = false">×</button><p class="eyebrow">{{ selectedCreationType === 'INSURANCE' ? 'Страховой случай' : 'Ремонт' }}</p><h2>Найдите автомобиль по VIN</h2><p class="modal-subtitle">Введите VIN — поиск выполняется через API по всем автомобилям. Список автомобилей заранее не загружается.</p><label class="search-field repair-vin-search"><span>⌕</span><input v-model="repairVinSearch" type="search" placeholder="Введите VIN автомобиля" autocomplete="off" @input="searchRepairVehicle" /></label><div class="repair-vehicle-results"><p v-if="repairVehicleSearchBusy" class="empty-state">Ищем автомобиль…</p><p v-else-if="repairVehicleSearchError" class="empty-state">Не удалось выполнить поиск: {{ repairVehicleSearchError }}</p><button v-for="car in repairVehicleCandidates" :key="car.id" type="button" class="repair-vehicle-option" @click="chooseRepairVehicle(car)"><strong>{{ car.vehicle }}</strong><span>VIN: {{ car.vin }} · {{ car.registration }}</span><small>{{ car.ownerName }} · {{ car.ownerPhone }}</small></button><p v-if="!repairVehicleSearchBusy && !repairVehicleSearchError && repairVinSearch && !repairVehicleCandidates.length" class="empty-state">Автомобиль с таким VIN не найден.</p><p v-if="!repairVinSearch" class="empty-state">Введите VIN, чтобы найти автомобиль.</p></div></section></div>
     <div v-if="insuranceCaseCreateVisible" class="stub-overlay" @click.self="insuranceCaseCreateVisible = false"><form class="data-modal insurance-case-create-modal" @submit.prevent="saveNewInsuranceCase"><button type="button" class="icon-button" aria-label="Закрыть" @click="insuranceCaseCreateVisible = false">×</button><p class="eyebrow">Автомобиль №{{ repairCaseCar?.number }} · VIN {{ repairCaseCar?.vin }}</p><h2>{{ selectedCreationType === 'INSURANCE' ? 'Новый страховой случай' : 'Новое обращение на ремонт' }}</h2><p class="modal-subtitle">{{ repairCaseCar?.vehicle }} · {{ repairCaseCar?.registration }}</p><div class="data-form-grid"><label><span>Номер дела / направления *</span><input v-model="newInsuranceCaseForm.caseNumber" required /></label><label v-if="selectedCreationType === 'INSURANCE'"><span>Страховая компания *</span><select v-model="newInsuranceCaseForm.insurerId" required :disabled="insurersBusy || !insurers.length"><option value="" disabled>Выберите страховую</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select><small v-if="insurersBusy" class="field-hint">Загружаем список страховых компаний…</small><small v-else-if="insurersError" class="field-hint field-hint-error">Не удалось загрузить страховые компании.</small><small v-else-if="!insurers.length" class="field-hint">Страховые компании пока не добавлены в справочник.</small></label><label v-if="selectedCreationType === 'INSURANCE'"><span>Исполнитель *</span><select v-model="newInsuranceCaseForm.contractorId" required :disabled="contractorsBusy || !contractors.length"><option value="" disabled>Выберите исполнителя</option><option v-for="item in contractors" :key="item.id" :value="String(item.id)">{{ item.shortName }}</option></select><small v-if="contractorsBusy" class="field-hint">Загружаем список исполнителей…</small><small v-else-if="contractorsError" class="field-hint field-hint-error">Не удалось загрузить исполнителей.</small><small v-else-if="!contractors.length" class="field-hint">Исполнители пока не добавлены в справочник.</small></label><label class="form-wide"><span>Фото автомобиля{{ selectedCreationType === 'INSURANCE' ? ' *' : '' }}</span><input type="file" accept="image/*" multiple @change="readRepairCasePhotos" /><small>{{ selectedCreationType === 'INSURANCE' ? 'Добавьте фотографии повреждений. Максимум 20 файлов по 8 МБ.' : 'Фотографии можно добавить позже в карточке обращения.' }}</small><div v-if="repairCasePhotos.length" class="form-photo-preview"><div v-for="photo in repairCasePhotos" :key="photo.fileName"><img :src="photo.dataUrl" :alt="photo.fileName" /><span>{{ photo.fileName }}</span></div></div></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="insuranceCaseCreateVisible = false">Отмена</button><button class="button button-primary" type="submit">{{ selectedCreationType === 'INSURANCE' ? 'Создать страховой случай' : 'Создать ремонт' }}</button></div></form></div>
     <div v-if="repairCasesVisible" class="stub-overlay" @click.self="repairCasesVisible = false"><section class="data-modal repair-cases-modal"><button class="icon-button" aria-label="Закрыть" @click="repairCasesVisible = false">×</button><p class="eyebrow">Автомобиль №{{ repairCaseCar?.number }} · VIN {{ repairCaseCar?.vin }}</p><h2>Страховые случаи</h2><div v-if="repairCasesBusy" class="empty-state">Загружаем случаи…</div><template v-else><div class="repair-case-list"><div v-for="item in repairCases" :key="item.id" class="repair-case-card"><div><strong>Случай №{{ item.caseNumber }}</strong><small>{{ item.claimNumber || 'Номер дела не указан' }} · {{ statusLabel(item.status) }}</small><small>{{ item.insuredPerson || 'Страхователь не указан' }}</small></div><div><button type="button" class="settings-edit" @click="openRepairCasePhotos(item)">Фото</button><button type="button" class="settings-edit" @click="startRepairCase(item)">Изменить</button><button type="button" class="settings-delete-text" @click="deleteRepairCase(item)">Удалить</button></div></div></div><button type="button" class="button button-primary" @click="startRepairCase()">＋ Новый страховой случай</button><form v-if="editingRepairCase || repairCaseForm.caseNumber" class="data-form-grid repair-case-form" @submit.prevent="saveRepairCase"><label><span>Номер дела / направления *</span><input v-model="repairCaseForm.caseNumber" required /></label><label><span>Статус *</span><select v-model="repairCaseForm.status" required><option v-for="item in caseStatusOptions.filter((value) => value.code !== 'ALL')" :key="item.code" :value="item.code">{{ item.label }}</option></select></label><label><span>Страхователь</span><input v-model="repairCaseForm.insuredPerson" /></label><label><span>Страховая компания *</span><select v-model="repairCaseForm.insurerId" required><option value="" disabled>Выберите страховую</option><option v-for="item in insurers" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Исполнитель *</span><select v-model="repairCaseForm.contractorId" required><option value="" disabled>Выберите исполнителя</option><option v-for="item in contractors" :key="item.id" :value="String(item.id)">{{ item.shortName }}</option></select></label><label><span>Номер дела (дополнительно)</span><input v-model="repairCaseForm.claimNumber" /></label><label><span>Смена</span><select v-model="repairCaseForm.shiftId"><option value="">Не выбрана</option><option v-for="item in shifts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><label><span>Дата приёмки</span><input v-model="repairCaseForm.acceptedAt" type="date" /></label><div class="modal-actions form-wide"><button class="button button-primary" type="submit">Сохранить страховой случай</button></div></form></template></section></div>
     <div v-if="caseActionModal" class="stub-overlay" @click.self="caseActionModal = null"><form class="data-modal compact-modal" @submit.prevent="submitCaseAction"><button type="button" class="icon-button" aria-label="Закрыть" @click="caseActionModal = null">×</button><p class="eyebrow">Изменение страхового случая</p><h2>{{ caseActionModal === 'SCHEDULE_REPAIR' ? 'Записать на ремонт' : 'Выдать автомобиль' }}</h2><p class="modal-subtitle">{{ selectedRegistryCase?.vehicleMake }} {{ selectedRegistryCase?.vehicleModel }} · дело {{ selectedRegistryCase?.caseNumber }}</p><div class="data-form-grid"><label v-if="caseActionModal === 'SCHEDULE_REPAIR'"><span>Исполнитель *</span><select v-model="caseActionForm.contractorId" required><option value="" disabled>Выберите исполнителя</option><option v-for="item in contractors" :key="item.id" :value="String(item.id)">{{ item.shortName }}</option></select></label><label v-if="caseActionModal === 'SCHEDULE_REPAIR'"><span>Дата ремонта *</span><input v-model="caseActionForm.appointmentDate" type="date" required /></label><label v-if="caseActionModal === 'SCHEDULE_REPAIR'"><span>Время ремонта *</span><input v-model="caseActionForm.appointmentTime" type="time" required /></label><label v-if="caseActionModal === 'DELIVER'"><span>Кому выдан автомобиль *</span><input v-model="caseActionForm.receivedBy" required placeholder="ФИО получателя" /></label><label class="form-wide"><span>Комментарий</span><textarea v-model="caseActionForm.comment" rows="3" placeholder="Комментарий к действию"></textarea></label></div><div class="modal-actions"><button type="button" class="button button-cloud dark-button" @click="caseActionModal = null">Отмена</button><button class="button button-primary" type="submit">{{ caseActionModal === 'SCHEDULE_REPAIR' ? 'Записать на ремонт' : 'Выдать автомобиль' }}</button></div></form></div>
@@ -1590,12 +1673,19 @@ watch(paginatedRepairCases, syncCaseRowMeta)
 .case-detail-tabs { display: flex; gap: 6px; margin: 20px 0; padding: 5px; border-radius: 10px; background: var(--soft); }
 .case-detail-tabs button { padding: 10px 14px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; font-weight: 750; }
 .case-detail-tabs button.is-active { color: var(--brand); background: white; box-shadow: 0 2px 8px rgb(24 52 47 / 10%); }
-.case-detail-contractor { display: grid; gap: 18px; max-width: 620px; }
-.case-detail-contractor-card { display: grid; gap: 6px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
-.case-detail-contractor-card span, .case-detail-contractor label span { color: var(--muted); font-size: 12px; }
-.case-detail-contractor-card strong { font-size: 20px; }
-.case-detail-contractor label { display: grid; gap: 8px; }
-.case-detail-contractor select { min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: white; }
+.case-detail-contractor { width: min(620px, 100%); display: grid; gap: 20px; padding: 4px 0 10px; }
+.case-detail-contractor::before { content: 'Назначение исполнителя'; color: var(--brand); font-size: 17px; font-weight: 850; letter-spacing: -.02em; }
+.case-detail-contractor-card { position: relative; display: grid; gap: 8px; padding: 20px 22px; border: 1px solid #cfe0da; border-radius: 16px; background: linear-gradient(135deg, #f4faf7 0%, #eef6f3 100%); box-shadow: 0 8px 22px rgb(21 63 56 / 6%); }
+.case-detail-contractor-card::after { content: 'ТЕКУЩИЙ'; position: absolute; top: 18px; right: 20px; padding: 5px 8px; border-radius: 999px; color: var(--green); background: var(--green-soft); font-size: 9px; font-weight: 850; letter-spacing: .08em; }
+.case-detail-contractor:not(.has-contractor) .case-detail-contractor-card::after { content: 'НЕ НАЗНАЧЕН'; color: var(--muted); background: #e9efed; }
+.case-detail-contractor-card span, .case-detail-contractor label span { color: var(--muted); font-size: 12px; font-weight: 650; }
+.case-detail-contractor-card strong { width: fit-content; color: var(--brand-2); font-size: 25px; letter-spacing: -.03em; cursor: pointer; text-decoration: underline; text-decoration-color: #9ecfc4; text-underline-offset: 5px; }
+.case-detail-contractor:not(.has-contractor) .case-detail-contractor-card strong { color: var(--muted); }
+.case-detail-contractor label { display: grid; gap: 9px; }
+.case-detail-contractor select { width: 100%; min-height: 50px; padding: 0 15px; border: 1px solid #cbdad6; border-radius: 12px; outline: 0; color: var(--ink); background: #fff; box-shadow: 0 3px 10px rgb(21 63 56 / 4%); }
+.case-detail-contractor select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgb(28 201 178 / 15%); }
+.case-detail-contractor:not(.is-editing) > label, .case-detail-contractor:not(.is-editing) > .button { display: none; }
+.case-detail-contractor > .button { justify-self: start; min-width: 245px; min-height: 46px; }
 .case-detail-main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .case-detail-main > div, .case-detail-main > label { display: grid; gap: 5px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fbfdfc; }
 .case-detail-main span, .case-detail-actions p { color: var(--muted); font-size: 11px; }
@@ -1657,6 +1747,16 @@ watch(paginatedRepairCases, syncCaseRowMeta)
 .insurance-case-create-modal .form-photo-preview { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .insurance-case-create-modal .form-photo-preview div { display: grid; gap: 4px; width: 92px; color: var(--muted); font-size: 10px; }
 .insurance-case-create-modal .form-photo-preview img { width: 92px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.schedule-work-list { display: grid; gap: 8px; margin: 6px 0 16px; }
+.schedule-repair-overlay { z-index: 30; }
+.schedule-work-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .8fr); align-items: center; gap: 14px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+.schedule-work-row strong, .schedule-work-row small { display: block; }
+.schedule-work-row small { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.case-row .cell:nth-child(4) { cursor: pointer; }
+.case-row .cell:nth-child(4):hover { color: var(--brand-2); text-decoration: underline; text-underline-offset: 3px; }
+.inline-contractor-button { max-width: 100%; padding: 0; border: 0; color: var(--brand-2); background: transparent; font-size: 12px; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.inline-contractor-button:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+.inline-contractor-select { width: 100%; min-height: 34px; padding: 0 8px; border: 1px solid var(--accent); border-radius: 8px; color: var(--ink); background: var(--paper); font-size: 12px; }
 .field-hint { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .field-hint-error { color: var(--red); }
 .directory-list { display: grid; gap: 7px; max-height: 260px; overflow: auto; margin-top: 22px; }

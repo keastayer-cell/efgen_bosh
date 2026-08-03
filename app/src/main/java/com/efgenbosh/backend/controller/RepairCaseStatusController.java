@@ -13,5 +13,5 @@ public class RepairCaseStatusController {
     private final RepairCaseStatusRepository statuses;
     public RepairCaseStatusController(RepairCaseStatusRepository statuses) { this.statuses = statuses; }
     @GetMapping
-    public List<RepairCaseStatusResponse> list() { return statuses.findAllByActiveTrueOrderBySortOrderAsc().stream().map(item -> new RepairCaseStatusResponse(item.getId(), item.getCode(), item.getLabel())).toList(); }
+    public List<RepairCaseStatusResponse> list() { return statuses.findAllByActiveTrueOrderByIdAsc().stream().map(item -> new RepairCaseStatusResponse(item.getId(), item.getCode(), item.getLabel())).toList(); }
 }
