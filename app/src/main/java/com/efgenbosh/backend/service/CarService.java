@@ -289,7 +289,7 @@ public class CarService {
     private CarResponse response(Car car) {
         var registryCases = repairCases.findAllByCar_IdOrderByCreatedAtDesc(car.getId()).stream().map(item -> {
             var caseParts = parts.findAllByRepairCase_IdOrderBySortOrderAscIdAsc(item.getId());
-            return RepairCaseRegistryResponse.from(item, caseParts.size(), (int) caseParts.stream().filter(Part::isReceived).count());
+            return RepairCaseRegistryResponse.from(item, caseParts.size(), (int) caseParts.stream().filter(Part::isReceived).count(), (int) caseParts.stream().filter(Part::isDeclined).count());
         }).sorted(java.util.Comparator.comparing(RepairCaseRegistryResponse::id, java.util.Comparator.reverseOrder())).toList();
         return CarResponse.from(car, LocalDate.now(), registryCases);
     }

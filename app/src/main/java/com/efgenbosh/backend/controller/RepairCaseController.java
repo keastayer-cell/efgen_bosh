@@ -62,7 +62,10 @@ public class RepairCaseController {
         RepairCase item = cases.findById(caseId).filter(value -> value.getCar().getId().equals(carId)).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Страховой случай не найден."));
         String required = switch (action.toUpperCase()) { case "ORDER_PARTS" -> RepairCaseStatus.CREATED.code(); case "SCHEDULE_REPAIR" -> RepairCaseStatus.PARTS_RECEIVED.code(); case "DELIVER" -> RepairCaseStatus.SCHEDULED.code(); default -> null; };
         if (required == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестное действие.");
-        if (!required.equals(item.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Действие недоступно для статуса «" + item.getStatus() + "».");
+        boolean directDeliveryAfterDeclinedParts = "DELIVER".equalsIgnoreCase(action)
+                && RepairCaseStatus.PARTS_RECEIVED.code().equals(item.getStatus())
+                && allPartsDeclined(item);
+        if (!required.equals(item.getStatus()) && !directDeliveryAfterDeclinedParts) throw new ResponseStatusException(HttpStatus.CONFLICT, "Действие недоступно для статуса «" + item.getStatus() + "».");
         String next = switch (action.toUpperCase()) {
             case "ORDER_PARTS" -> { if (parts.findAllByRepairCase_IdOrderBySortOrderAscIdAsc(caseId).isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Сначала добавьте хотя бы одну деталь."); yield RepairCaseStatus.WAITING_PARTS.code(); }
             case "SCHEDULE_REPAIR" -> { if (request == null || request.contractorId() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Выберите исполнителя для страхового случая."); yield RepairCaseStatus.SCHEDULED.code(); }
@@ -74,6 +77,7 @@ public class RepairCaseController {
     private String humanAction(String action) { return switch (action.toUpperCase()) { case "ORDER_PARTS" -> "Заказаны детали"; case "SCHEDULE_REPAIR" -> "Автомобиль записан на ремонт"; case "DELIVER" -> "Машина выдана"; default -> "Изменение обращения"; }; }
     private String historyAction(String action, RepairCase item) { String result = humanAction(action); if ("SCHEDULE_REPAIR".equalsIgnoreCase(action)) { var contractor = item.getContractorId() == null ? null : contractors.findById(item.getContractorId()).orElse(null); result += ". Исполнитель: " + (contractor == null ? "не указан" : contractor.getShortName()) + ". Дата: " + (item.getAppointmentDate() == null ? "не указана" : item.getAppointmentDate()) + (item.getAppointmentTime() == null ? "" : ", время: " + item.getAppointmentTime()); } return result; }
     private Long userId(Authentication authentication) { Object principal = authentication == null ? null : authentication.getPrincipal(); return principal instanceof AppUserPrincipal user ? user.getUserId() : null; }
+    private boolean allPartsDeclined(RepairCase item) { var related = parts.findAllByRepairCase_IdOrderBySortOrderAscIdAsc(item.getId()); return !related.isEmpty() && related.stream().allMatch(value -> value.isDeclined()); }
     private void record(RepairCase item,String previous,String next,String comment,Long userId){ RepairCaseHistory event=new RepairCaseHistory(); event.setRepairCase(item); event.setPreviousStatus(previous); event.setNewStatus(next); event.setComment(comment); event.setCreatedBy(userId); history.save(event); }
     private String contractorAction(RepairCase item) { var contractor = item.getContractorId() == null ? null : contractors.findById(item.getContractorId()).orElse(null); return "Исполнитель назначен: " + (contractor == null ? "не указан" : contractor.getShortName()); }
     private RepairCase findCase(Long carId, Long caseId) { return cases.findById(caseId).filter(value -> value.getCar().getId().equals(carId)).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Страховой случай не найден.")); }

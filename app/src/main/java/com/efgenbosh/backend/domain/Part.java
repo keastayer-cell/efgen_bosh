@@ -33,6 +33,7 @@ public class Part {
     @Column(name = "supplier_id") private Long supplierId;
     @Column(name = "expected_date") private LocalDate expectedDate;
     @Column(nullable = false) private boolean received;
+    @Column(nullable = false) private boolean declined;
     @Column(name = "received_at") private LocalDate receivedAt;
     @Column(name = "sort_order", nullable = false) private Integer sortOrder = 0;
     @Column(name = "created_at", nullable = false) private OffsetDateTime createdAt = OffsetDateTime.now();
@@ -61,6 +62,8 @@ public class Part {
     public void setExpectedDate(LocalDate value) { expectedDate = value; }
     public boolean isReceived() { return received; }
     public void setReceived(boolean value) { received = value; }
+    public boolean isDeclined() { return declined; }
+    public void setDeclined(boolean value) { declined = value; }
     public LocalDate getReceivedAt() { return receivedAt; }
     public void setReceivedAt(LocalDate value) { receivedAt = value; }
     public Integer getSortOrder() { return sortOrder; }

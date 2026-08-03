@@ -10,7 +10,7 @@ public record PartRequest(
     @NotBlank @Size(max = 500) String name,
     @Size(max = 255) String article,
     Long supplierId, String catalogNumber, String manufacturer, java.math.BigDecimal quantity,
-    LocalDate orderedAt, LocalDate expectedDate, String comment, boolean received,
+    LocalDate orderedAt, LocalDate expectedDate, String comment, boolean received, boolean declined,
     Integer sortOrder
 ) {
 }
