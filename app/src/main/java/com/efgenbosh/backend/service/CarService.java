@@ -24,6 +24,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.Locale;
 import java.util.List;
 import java.util.Set;
 import com.efgenbosh.backend.dto.car.CarPageResponse;
@@ -148,16 +150,37 @@ public class CarService {
     }
 
     private boolean matchesVehicleQuery(CarResponse car, String needle) {
-        return needle.isBlank()
-            || String.valueOf(car.accountingNumber()).contains(needle)
-            || value(car.vehicleName()).toLowerCase().contains(needle)
-            || value(car.vehicleMake()).toLowerCase().contains(needle)
-            || value(car.vehicleModel()).toLowerCase().contains(needle)
-            || value(car.registrationNumber()).toLowerCase().contains(needle)
-            || value(car.vin()).toLowerCase().contains(needle)
-            || value(car.ownerPhone()).toLowerCase().contains(needle)
-            || value(car.ownerName()).toLowerCase().contains(needle)
-            || value(car.claimNumber()).toLowerCase().contains(needle);
+        return needle.isBlank() || containsAllSearchTokens(needle,
+            String.valueOf(car.accountingNumber()), car.vehicleName(), car.vehicleMake(), car.vehicleModel(),
+            car.registrationNumber(), car.vin(), car.ownerPhone(), car.ownerName(), car.claimNumber());
+    }
+
+    private boolean containsAllSearchTokens(String query, String... fields) {
+        String[] tokens = normalizeSearch(query).split("\\s+");
+        String searchable = Arrays.stream(fields)
+            .map(this::normalizeSearch)
+            .filter(value -> !value.isBlank())
+            .reduce((left, right) -> left + " " + right)
+            .orElse("");
+        return Arrays.stream(tokens).filter(token -> !token.isBlank()).allMatch(searchable::contains);
+    }
+
+    private String normalizeSearch(String value) {
+        if (value == null) return "";
+        String lower = value.toLowerCase(Locale.ROOT).replace('ё', 'е');
+        StringBuilder result = new StringBuilder();
+        for (char character : lower.toCharArray()) {
+            result.append(switch (character) {
+                case 'а' -> "a"; case 'б' -> "b"; case 'в' -> "v"; case 'г' -> "g"; case 'д' -> "d";
+                case 'е' -> "e"; case 'ж' -> "zh"; case 'з' -> "z"; case 'и' -> "i"; case 'й' -> "y";
+                case 'к' -> "k"; case 'л' -> "l"; case 'м' -> "m"; case 'н' -> "n"; case 'о' -> "o";
+                case 'п' -> "p"; case 'р' -> "r"; case 'с' -> "s"; case 'т' -> "t"; case 'у' -> "u";
+                case 'ф' -> "f"; case 'х' -> "h"; case 'ц' -> "c"; case 'ч' -> "ch"; case 'ш' -> "sh";
+                case 'щ' -> "shch"; case 'ы' -> "y"; case 'э' -> "e"; case 'ю' -> "yu"; case 'я' -> "ya";
+                case 'ъ', 'ь' -> ""; default -> String.valueOf(character);
+            });
+        }
+        return result.toString().replaceAll("\\s+", " ").trim();
     }
 
     @Transactional
