@@ -171,13 +171,14 @@ const displayDateFormatter = new Intl.DateTimeFormat('ru-RU', {
   month: '2-digit',
   year: 'numeric',
 })
-const displayDateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
+const displayDateTimePartsFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: DISPLAY_TIME_ZONE,
-  day: '2-digit',
-  month: '2-digit',
   year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
+  hourCycle: 'h23',
 })
 
 function formatDisplayDate(value) {
@@ -189,7 +190,9 @@ function formatDisplayDate(value) {
 function formatDisplayDateTime(value) {
   if (!value) return '—'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? String(value).slice(0, 16).replace('T', ' ') : displayDateTimeFormatter.format(date)
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16).replace('T', ' ')
+  const parts = Object.fromEntries(displayDateTimePartsFormatter.formatToParts(date).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`
 }
 
 function displayTodayIso() {
