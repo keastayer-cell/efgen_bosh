@@ -1,0 +1,13 @@
+ALTER TABLE work.w_repair_case ADD COLUMN comment VARCHAR(1000) NOT NULL DEFAULT '';
+ALTER TABLE work.w_repair_case ADD COLUMN appointment_date DATE;
+ALTER TABLE work.w_repair_case ADD COLUMN appointment_time TIME;
+ALTER TABLE work.w_repair_case ADD COLUMN started_at TIMESTAMPTZ;
+ALTER TABLE work.w_repair_case ADD COLUMN delivered_at TIMESTAMPTZ;
+ALTER TABLE work.w_repair_case ADD COLUMN received_by VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE work.w_part ADD COLUMN catalog_number VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE work.w_part ADD COLUMN manufacturer VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE work.w_part ADD COLUMN quantity NUMERIC(12,3) NOT NULL DEFAULT 1;
+ALTER TABLE work.w_part ADD COLUMN ordered_at DATE;
+ALTER TABLE work.w_part ADD COLUMN comment VARCHAR(1000) NOT NULL DEFAULT '';
+ALTER TABLE work.w_work_order_line ADD COLUMN contractor_id BIGINT;
+ALTER TABLE work.w_work_order_line ADD COLUMN comment VARCHAR(1000) NOT NULL DEFAULT '';

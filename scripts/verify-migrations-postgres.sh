@@ -12,9 +12,12 @@ if [[ ! -f "$APP_JAR" ]]; then
   exit 1
 fi
 
-: "${BOSH_DB_URL:?BOSH_DB_URL is required}"
-: "${BOSH_DB_USER:?BOSH_DB_USER is required}"
-: "${BOSH_DB_PASSWORD:?BOSH_DB_PASSWORD is required}"
+: "${DB_HOST:?DB_HOST is required}"
+: "${DB_PORT:?DB_PORT is required}"
+: "${DB_NAME:?DB_NAME is required}"
+: "${DB_SCHEMA:?DB_SCHEMA is required}"
+: "${DB_USER:?DB_USER is required}"
+: "${DB_PASSWORD:?DB_PASSWORD is required}"
 
 cleanup() {
   if [[ -n "${app_pid:-}" ]]; then

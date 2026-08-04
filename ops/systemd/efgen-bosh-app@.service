@@ -1,14 +1,22 @@
 [Unit]
 Description=Efgen Bosh application (%i)
-After=network-online.target postgresql.service
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
+User=efgen-bosh
+Group=efgen-bosh
+WorkingDirectory=/opt/efgen-bosh
+EnvironmentFile=/etc/efgen-bosh/%i/common.env
 EnvironmentFile=/etc/efgen-bosh/%i/app.env
 ExecStart=/usr/bin/java -jar /opt/efgen-bosh/%i/app.jar
 Restart=on-failure
-RestartSec=5
+RestartSec=5s
 SuccessExitStatus=143
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=efgen-bosh-app-%i
 
 [Install]
 WantedBy=multi-user.target

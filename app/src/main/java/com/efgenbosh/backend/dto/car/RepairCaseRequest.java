@@ -1,0 +1,11 @@
+package com.efgenbosh.backend.dto.car;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
+import java.time.LocalTime;
+
+public record RepairCaseRequest(@NotBlank @Size(max = 64) String caseNumber, String status, String repairType,
+    @Size(max = 500) String insuredPerson, @Size(max = 120) String claimNumber,
+    Long insurerId, Long contractorId, Long shiftId, LocalDate acceptedAt, String comment,
+    LocalDate appointmentDate, LocalTime appointmentTime, String receivedBy) {}

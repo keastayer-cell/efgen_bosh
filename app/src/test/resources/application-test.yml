@@ -13,3 +13,7 @@ logging:
   level:
     root: WARN
     com.efgenbosh: INFO
+
+JWT_SECRET: 0123456789abcdef0123456789abcdef
+JWT_EXPIRES_MINUTES: 30
+JWT_REFRESH_EXPIRES_DAYS: 30
